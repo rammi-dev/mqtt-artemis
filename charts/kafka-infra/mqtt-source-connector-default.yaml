@@ -1,0 +1,14 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnector
+metadata:
+  name: mqtt-source-default
+  namespace: default
+  labels:
+    strimzi.io/cluster: telemetry-connect-default
+spec:
+  class: org.apache.camel.kafkaconnector.mqttsource.CamelMqttsourceSourceConnector
+  tasksMax: 1
+  config:
+    topics: raw-telemetry
+    camel.source.url: mqtt:raw-telemetry?host=tcp://artemis-activemq-artemis-master-0.artemis-activemq-artemis-master.default.svc.cluster.local:1883&clientId=kafka-connect-source-default
+    camel.source.kafka.topic: raw-telemetry

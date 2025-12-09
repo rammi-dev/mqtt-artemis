@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "producer.fullname" . }}-script
+  labels:
+    {{- include "producer.labels" . | nindent 4 }}
+data:
+  produce.py: |
+    import os
+    import time
+    import json
+    import paho.mqtt.client as mqtt
+    from datetime import datetime
+
+    BROKER_URL = os.getenv('BROKER_URL', 'localhost')
+    BROKER_PORT = int(os.getenv('BROKER_PORT', '1883'))
+    TOPIC = os.getenv('TOPIC', 'test')
+    FREQUENCY = float(os.getenv('FREQUENCY', '1.0'))
+    DURATION = int(os.getenv('DURATION', '60'))
+
+    print(f"Connecting to {BROKER_URL}:{BROKER_PORT}...")
+    client = mqtt.Client()
+    
+    try:
+        client.connect(BROKER_URL, BROKER_PORT, 60)
+        client.loop_start()
+        
+        start_time = time.time()
+        msg_count = 0
+        
+        print(f"Starting producer loop. Duration: {DURATION}s, Interval: {FREQUENCY}s")
+        
+        while (time.time() - start_time) < DURATION:
+            import random
+            payload = {
+                "timestamp": datetime.now().isoformat(),
+                "device_id": f"sensor-{random.randint(1, 5)}",
+                "temperature": round(random.uniform(20.0, 30.0), 2),
+                "pressure": round(random.uniform(100.0, 105.0), 2),
+                "status": "OK" if random.random() > 0.1 else "WARN",
+                "msg_id": msg_count
+            }
+            client.publish(TOPIC, json.dumps(payload))
+            print(f"Published message {msg_count} to {TOPIC}")
+            msg_count += 1
+            time.sleep(FREQUENCY)
+            
+        print(f"Finished. Total messages: {msg_count}")
+        client.loop_stop()
+        client.disconnect()
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        exit(1)

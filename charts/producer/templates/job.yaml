@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "producer.fullname" . }}-job
+  labels:
+    {{- include "producer.labels" . | nindent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "producer.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: producer
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            pip install paho-mqtt && python3 -u /app/produce.py
+        env:
+        - name: BROKER_URL
+          value: {{ index (splitList ":" .Values.brokerUrl) 1 | replace "//" "" | quote }}
+        - name: BROKER_PORT
+          value: {{ index (splitList ":" .Values.brokerUrl) 2 | quote }}
+        - name: TOPIC
+          value: {{ .Values.topic | quote }}
+        - name: FREQUENCY
+          value: {{ .Values.frequency | quote }}
+        - name: DURATION
+          value: {{ .Values.duration | quote }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - name: script-volume
+          mountPath: /app
+      volumes:
+      - name: script-volume
+        configMap:
+          name: {{ include "producer.fullname" . }}-script

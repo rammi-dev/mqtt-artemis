@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-etl-script
+  namespace: flink
+data:
+  job.py: |
+    from pyflink.table import EnvironmentSettings, TableEnvironment
+
+    env_settings = EnvironmentSettings.in_streaming_mode()
+    t_env = TableEnvironment.create(env_settings)
+
+    # Source: Kafka
+    t_env.execute_sql("""
+        CREATE TABLE kafka_source (
+            `timestamp` STRING,
+            device_id STRING,
+            temperature FLOAT,
+            pressure FLOAT,
+            status STRING,
+            msg_id BIGINT
+        ) WITH (
+            'connector' = 'kafka',
+            'topic' = 'raw-telemetry',
+            'properties.bootstrap.servers' = 'telemetry-cluster-kafka-bootstrap.default.svc.cluster.local:9092',
+            'properties.group.id' = 'flink-etl-group',
+            'scan.startup.mode' = 'earliest-offset',
+            'format' = 'json'
+        )
+    """)
+
+    # Sink: Kafka (processed-events)
+    t_env.execute_sql("""
+        CREATE TABLE processed_sink (
+            `timestamp` TIMESTAMP(3),
+            device_id STRING,
+            temperature FLOAT,
+            pressure FLOAT,
+            status STRING,
+            msg_id BIGINT
+        ) WITH (
+            'connector' = 'kafka',
+            'topic' = 'processed-events',
+            'properties.bootstrap.servers' = 'telemetry-cluster-kafka-bootstrap.default.svc.cluster.local:9092',
+            'format' = 'json'
+        )
+    """)
+
+    print("Starting ETL Job...")
+    t_env.execute_sql("""
+        INSERT INTO processed_sink
+        SELECT 
+            TO_TIMESTAMP(`timestamp`),
+            device_id,
+            temperature,
+            pressure,
+            status,
+            msg_id
+        FROM kafka_source
+    """).wait()
+---
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: telemetry-etl
+  namespace: flink
+spec:
+  image: my-pyflink:v1
+  flinkVersion: v1_18
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "1"
+    kubernetes.container.image.pull-policy: "Never"
+    kubernetes.container.image.pull-policy: "Never"
+  serviceAccount: flink
+  jobManager:
+    resource:
+      memory: "1024m"
+      cpu: 1
+  taskManager:
+    resource:
+      memory: "1024m"
+      cpu: 1
+  podTemplate:
+    spec:
+      initContainers:
+        - name: download-libs
+          image: flink:1.18
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p /opt/flink/usrlib
+              # Copy default libs to volume
+              cp -a /opt/flink/lib/. /opt/flink/usrlib/
+              # Download user libs
+              wget -P /opt/flink/usrlib https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.1.0-1.18/flink-sql-connector-kafka-3.1.0-1.18.jar
+              chown -R flink:flink /opt/flink/usrlib
+          volumeMounts:
+            - name: lib-volume
+              mountPath: /opt/flink/usrlib
+      containers:
+        - name: flink-main-container
+          volumeMounts:
+            - name: lib-volume
+              mountPath: /opt/flink/lib
+            - name: script-volume
+              mountPath: /opt/flink/scripts
+      volumes:
+        - name: lib-volume
+          emptyDir: {}
+        - name: script-volume
+          configMap:
+            name: flink-etl-script
+  job:
+    jarURI: local:///opt/flink/scripts/job.py
+    entryClass: "org.apache.flink.client.python.PythonDriver"
+    args: ["-py", "/opt/flink/scripts/job.py"]
+    parallelism: 1
+    upgradeMode: stateless

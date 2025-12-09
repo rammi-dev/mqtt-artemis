@@ -1,0 +1,18 @@
+# MQTT Producer Configuration
+image:
+  repository: python
+  tag: 3.9-slim
+  pullPolicy: IfNotPresent
+
+brokerUrl: "tcp://artemis-activemq-artemis-master-0.artemis-activemq-artemis-master.default.svc.cluster.local:1883"
+topic: "raw-telemetry"
+frequency: 0.1 # Message interval in seconds (0.1s = 10 msg/sec)
+duration: 60   # Run duration in seconds
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "100m"
+  limits:
+    memory: "128Mi"
+    cpu: "200m"
