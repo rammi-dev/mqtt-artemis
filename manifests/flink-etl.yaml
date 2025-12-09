@@ -22,7 +22,7 @@ data:
         ) WITH (
             'connector' = 'kafka',
             'topic' = 'raw-telemetry',
-            'properties.bootstrap.servers' = 'telemetry-cluster-kafka-bootstrap.default.svc.cluster.local:9092',
+            'properties.bootstrap.servers' = 'telemetry-cluster-kafka-brokers.default.svc.cluster.local:9092',
             'properties.group.id' = 'flink-etl-group',
             'scan.startup.mode' = 'earliest-offset',
             'format' = 'json'
@@ -41,7 +41,7 @@ data:
         ) WITH (
             'connector' = 'kafka',
             'topic' = 'processed-events',
-            'properties.bootstrap.servers' = 'telemetry-cluster-kafka-bootstrap.default.svc.cluster.local:9092',
+            'properties.bootstrap.servers' = 'telemetry-cluster-kafka-brokers.default.svc.cluster.local:9092',
             'format' = 'json'
         )
     """)

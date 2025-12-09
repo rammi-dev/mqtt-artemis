@@ -2,7 +2,7 @@ apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
 metadata:
   name: raw-telemetry
-  namespace: kafka
+  namespace: default
   labels:
     strimzi.io/cluster: telemetry-cluster
 spec:
@@ -16,7 +16,7 @@ apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
 metadata:
   name: processed-events
-  namespace: kafka
+  namespace: default
   labels:
     strimzi.io/cluster: telemetry-cluster
 spec:

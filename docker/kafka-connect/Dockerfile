@@ -1,12 +1,7 @@
 FROM quay.io/strimzi/kafka:0.49.1-kafka-4.0.0
 USER root:root
-RUN mkdir -p /opt/kafka/plugins/camel-mqtt
-RUN curl -L https://repo1.maven.org/maven2/org/apache/camel/kafkaconnector/camel-mqtt-source-kafka-connector/3.20.3/camel-mqtt-source-kafka-connector-3.20.3-package.tar.gz | tar xz -C /opt/kafka/plugins/camel-mqtt
-RUN rm -f /opt/kafka/plugins/camel-mqtt/kafka-clients-*.jar \
-        /opt/kafka/plugins/camel-mqtt/connect-api-*.jar \
-        /opt/kafka/plugins/camel-mqtt/connect-json-*.jar \
-        /opt/kafka/plugins/camel-mqtt/connect-transforms-*.jar \
-        /opt/kafka/plugins/camel-mqtt/lz4-java-*.jar \
-        /opt/kafka/plugins/camel-mqtt/snappy-java-*.jar \
-        /opt/kafka/plugins/camel-mqtt/slf4j-api-*.jar
+# Clean any existing plugins and create fresh directory
+RUN rm -rf /opt/kafka/plugins/* && mkdir -p /opt/kafka/plugins/stream-reactor
+# Download Lenses Stream Reactor 11.1.0 MQTT connector (compatible with Kafka 4.0/4.1)
+RUN curl -L https://github.com/lensesio/stream-reactor/releases/download/11.1.0/kafka-connect-mqtt-11.1.0-4.1.0-all.jar -o /opt/kafka/plugins/stream-reactor/kafka-connect-mqtt-11.1.0-4.1.0-all.jar
 USER 1001

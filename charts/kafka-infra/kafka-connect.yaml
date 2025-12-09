@@ -8,8 +8,8 @@ metadata:
 spec:
   version: 3.7.0
   replicas: 1
-  bootstrapServers: telemetry-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
-  image: my-kafka-connect:v1
+  bootstrapServers: telemetry-cluster-kafka-brokers.default.svc.cluster.local:9092
+  image: my-kafka-connect:v5
   
   # Top-level fields required by Strimzi v1beta2 (recent)
   groupId: connect-cluster

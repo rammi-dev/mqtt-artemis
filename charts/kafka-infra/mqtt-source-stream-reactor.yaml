@@ -1,0 +1,18 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnector
+metadata:
+  name: mqtt-source-stream-reactor
+  namespace: default
+  labels:
+    strimzi.io/cluster: telemetry-connect-default
+spec:
+  class: io.lenses.streamreactor.connect.mqtt.source.MqttSourceConnector
+  tasksMax: 1
+  config:
+    connect.mqtt.connection.clean: true
+    connect.mqtt.connection.timeout: 1000
+    connect.mqtt.kcql: "INSERT INTO raw-telemetry SELECT * FROM raw-telemetry WITHCONVERTER=`com.datamountaineer.streamreactor.connect.converters.source.BytesConverter`"
+    connect.mqtt.connection.keep.alive: 1000
+    connect.mqtt.client.id: kafka-connect-stream-reactor
+    connect.mqtt.hosts: "tcp://artemis-activemq-artemis-master-0.artemis-activemq-artemis-master.default.svc.cluster.local:1883"
+    connect.mqtt.service.quality: 1

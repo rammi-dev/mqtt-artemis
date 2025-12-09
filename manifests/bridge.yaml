@@ -38,6 +38,7 @@ data:
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
+    client.username_pw_set("admin", "admin")
 
     print(f"Connecting to MQTT {MQTT_BROKER}...")
     client.connect(MQTT_BROKER, 1883, 60)
@@ -68,7 +69,7 @@ spec:
         - name: MQTT_BROKER
           value: "artemis-activemq-artemis-master-0.artemis-activemq-artemis-master.default.svc.cluster.local"
         - name: KAFKA_BOOTSTRAP
-          value: "telemetry-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+          value: "telemetry-cluster-kafka-brokers.default.svc.cluster.local:9092"
         volumeMounts:
         - name: script
           mountPath: /app
