@@ -1,0 +1,126 @@
+apiVersion: nifi.konpyutaika.com/v1
+kind: NifiCluster
+metadata:
+  name: edge-nifi
+  namespace: nifi
+spec:
+  # Service configuration
+  service:
+    headlessEnabled: true
+    
+  # Zookeeper configuration
+  zkAddress: "zookeeper-0.zookeeper.nifi.svc.cluster.local:2181"
+  zkPath: "/edge-nifi"
+  
+  # Cluster configuration
+  clusterImage: "apache/nifi:2.0.0"
+  oneNifiNodePerNode: false
+  
+  # Propagate labels
+  propagateLabels: true
+  
+  # Managed admins (no security for edge deployment)
+  managedAdminUsers:
+    - identity: "admin"
+      name: "admin"
+  
+  # Read only configuration
+  readOnlyConfig:
+    # Disable security for simplicity
+    nifiProperties:
+      webProxyHosts:
+        - "edge-nifi.nifi.svc.cluster.local:8080"
+        - "edge-nifi-0.edge-nifi-headless.nifi.svc.cluster.local:8080"
+      # Disable HTTPS
+      needClientAuth: false
+      
+  # Node configuration
+  nodes:
+    - id: 0
+      nodeConfigGroup: "default"
+      
+  # Node config groups
+  nodeConfigGroups:
+    default:
+      # Disable security
+      isNode: true
+      
+      # Storage configuration
+      storageConfigs:
+        - name: provenance-repository
+          mountPath: "/opt/nifi/nifi-current/provenance_repository"
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 5Gi
+        - name: flowfile-repository  
+          mountPath: "/opt/nifi/nifi-current/flowfile_repository"
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 5Gi
+        - name: content-repository
+          mountPath: "/opt/nifi/nifi-current/content_repository"
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 10Gi
+        - name: database-repository
+          mountPath: "/opt/nifi/nifi-current/database_repository"
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 2Gi
+                
+      # Resource configuration
+      resourcesRequirements:
+        requests:
+          memory: "1Gi"
+          cpu: "500m"
+        limits:
+          memory: "2Gi"
+          cpu: "1000m"
+          
+      # NiFi properties
+      nifiProperties:
+        overrideConfigs: |
+          nifi.ui.banner.text=Edge Analytics Node
+          nifi.web.http.host=0.0.0.0
+          nifi.web.http.port=8080
+          nifi.cluster.protocol.is.secure=false
+          nifi.security.user.authorizer=
+          nifi.security.user.login.identity.provider=
+          
+      # Init containers to download ClickHouse JDBC driver
+      initContainers:
+        - name: download-clickhouse-jdbc
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Downloading ClickHouse JDBC driver..."
+              curl -L -o /opt/nifi/nifi-current/lib/clickhouse-jdbc.jar \
+                https://github.com/ClickHouse/clickhouse-java/releases/download/v0.6.5/clickhouse-jdbc-0.6.5-all.jar
+              echo "Download complete"
+          volumeMounts:
+            - name: extensions-repository
+              mountPath: /opt/nifi/nifi-current/lib
+              
+  # Listeners configuration (unsecured)
+  listenersConfig:
+    internalListeners:
+      - type: "http"
+        name: "http"
+        containerPort: 8080
+    sslSecrets:
+      tlsSecretName: ""
+      create: false

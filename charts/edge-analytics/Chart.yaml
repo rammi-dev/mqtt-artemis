@@ -1,0 +1,44 @@
+apiVersion: v2
+name: edge-analytics
+description: Complete edge analytics stack with Artemis MQTT, NiFi, and ClickHouse
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - edge-analytics
+  - mqtt
+  - nifi
+  - clickhouse
+  - telemetry
+
+maintainers:
+  - name: Edge Analytics Team
+
+# All infrastructure as dependencies - no templates to maintain!
+dependencies:
+  # ArkMQ Operator - Official Apache ActiveMQ Artemis operator (RECOMMENDED)
+  # Open source, actively maintained, CRD-based like NiFiKop
+  - name: arkmq-org-broker-operator
+    version: "2.1.0"
+    repository: "oci://quay.io/arkmq-org/helm-charts"
+    alias: artemis-operator
+    condition: artemis.operator.enabled
+  
+  # ClickHouse Operator (manages ClickHouse clusters)
+  - name: clickhouse-operator
+    version: "0.23.0"
+    repository: "https://docs.altinity.com/clickhouse-operator"
+    condition: clickhouse.enabled
+  
+  # Zookeeper (for NiFi)
+  - name: zookeeper
+    version: "13.4.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: zookeeper.enabled
+  
+  # NiFiKop Operator (manages NiFi clusters)
+  - name: nifikop
+    version: "1.9.0"
+    repository: "https://konpyutaika.github.io/helm-charts"
+    condition: nifikop.enabled

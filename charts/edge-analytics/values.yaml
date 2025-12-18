@@ -1,0 +1,41 @@
+# Edge Analytics - Umbrella Chart Values
+# All infrastructure managed via dependencies
+
+# Enable/disable components
+artemis:
+  enabled: true
+  replicas: 1
+  artemisUser: admin
+  artemisPassword: admin
+  persistence:
+    enabled: false
+
+clickhouse:
+  enabled: true
+  # ClickHouse operator will be installed
+  # You only need to create ClickHouseInstallation CRD separately
+
+zookeeper:
+  enabled: true
+  replicaCount: 1
+  auth:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+nifikop:
+  enabled: true
+  image:
+    tag: v1.9.0
+  namespaces:
+    - nifi
+  # NiFiKop operator will be installed
+  # You only need to create NifiCluster CRD separately

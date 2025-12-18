@@ -6,7 +6,7 @@ metadata:
 spec:
   templates:
     podTemplates:
-      - name: simple-pod
+      - name: edge-pod
         spec:
           containers:
             - name: clickhouse
@@ -23,10 +23,14 @@ spec:
       admin/password: password
       admin/networks/ip: "0.0.0.0/0"
       admin/profile: default
+    settings:
+      # Enable HTTP interface for NiFi JDBC connections
+      http_port: 8123
     clusters:
       - name: main
         layout:
           shardsCount: 1
           replicasCount: 1
         templates:
-          podTemplate: simple-pod
+          podTemplate: edge-pod
+

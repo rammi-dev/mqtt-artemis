@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clickhouse-init
+  namespace: clickhouse
+spec:
+  template:
+    spec:
+      containers:
+      - name: client
+        image: curlimages/curl
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Waiting for ClickHouse to be ready..."
+            sleep 30
+            
+            echo "Creating Database..."
+            curl -u admin:password -X POST "http://clickhouse-telemetry-db.clickhouse.svc.cluster.local:8123/" \
+              -d "CREATE DATABASE IF NOT EXISTS telemetry"
+            
+            echo "Creating Table..."
+            curl -u admin:password -X POST "http://clickhouse-telemetry-db.clickhouse.svc.cluster.local:8123/" \
+              -d "CREATE TABLE IF NOT EXISTS telemetry.events (
+                timestamp DateTime64(3),
+                device_id String,
+                temperature Float32,
+                pressure Float32,
+                status String,
+                msg_id UInt64
+              ) ENGINE = MergeTree()
+              ORDER BY (device_id, timestamp)
+              PARTITION BY toYYYYMM(timestamp)
+              SETTINGS index_granularity = 8192"
+            
+            echo "Schema Created Successfully."
+      restartPolicy: OnFailure
+
