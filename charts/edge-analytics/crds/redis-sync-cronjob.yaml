@@ -1,0 +1,229 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: clickhouse-redis-sync
+  namespace: edge
+spec:
+  schedule: "*/1 * * * *"  # Every minute - adjust based on dashboard refresh needs
+  concurrencyPolicy: Replace
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: redis-sync
+              image: python:3.11-slim
+              env:
+                - name: CLICKHOUSE_HOST
+                  value: "clickhouse-telemetry-db.clickhouse.svc.cluster.local"
+                - name: CLICKHOUSE_PORT
+                  value: "8123"
+                - name: CLICKHOUSE_USER
+                  value: "admin"
+                - name: CLICKHOUSE_PASSWORD
+                  value: "password"
+                - name: REDIS_HOST
+                  value: "edge-analytics-redis-master.edge.svc.cluster.local"
+                - name: REDIS_PORT
+                  value: "6379"
+                - name: REDIS_PASSWORD
+                  value: "redis-secret"
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  pip install redis clickhouse-connect --quiet
+                  python3 << 'EOF'
+                  import os
+                  import json
+                  import redis
+                  import clickhouse_connect
+                  from datetime import datetime, timedelta
+
+                  # Configuration
+                  ch_host = os.getenv('CLICKHOUSE_HOST')
+                  ch_port = int(os.getenv('CLICKHOUSE_PORT', '8123'))
+                  ch_user = os.getenv('CLICKHOUSE_USER')
+                  ch_password = os.getenv('CLICKHOUSE_PASSWORD')
+                  redis_host = os.getenv('REDIS_HOST')
+                  redis_port = int(os.getenv('REDIS_PORT', '6379'))
+                  redis_password = os.getenv('REDIS_PASSWORD')
+
+                  print(f"Connecting to ClickHouse at {ch_host}:{ch_port}...")
+                  ch_client = clickhouse_connect.get_client(
+                      host=ch_host,
+                      port=ch_port,
+                      username=ch_user,
+                      password=ch_password,
+                      database='telemetry'
+                  )
+
+                  print(f"Connecting to Redis at {redis_host}:{redis_port}...")
+                  r = redis.Redis(
+                      host=redis_host,
+                      port=redis_port,
+                      password=redis_password,
+                      decode_responses=True
+                  )
+
+                  # Test connections
+                  r.ping()
+                  print("Redis connection OK")
+
+                  # ========================================
+                  # Dashboard Query 1: Real-time device stats (last 5 minutes)
+                  # ========================================
+                  query_device_stats = """
+                  SELECT 
+                      device_id,
+                      count() as message_count,
+                      round(avg(temperature), 2) as avg_temperature,
+                      round(min(temperature), 2) as min_temperature,
+                      round(max(temperature), 2) as max_temperature,
+                      round(avg(pressure), 2) as avg_pressure,
+                      countIf(status = 'WARN') as warning_count
+                  FROM events
+                  WHERE timestamp >= now() - INTERVAL 5 MINUTE
+                  GROUP BY device_id
+                  ORDER BY device_id
+                  """
+                  result = ch_client.query(query_device_stats)
+                  device_stats = [
+                      {
+                          'device_id': row[0],
+                          'message_count': row[1],
+                          'avg_temperature': row[2],
+                          'min_temperature': row[3],
+                          'max_temperature': row[4],
+                          'avg_pressure': row[5],
+                          'warning_count': row[6]
+                      }
+                      for row in result.result_rows
+                  ]
+                  r.set('dashboard:device_stats', json.dumps(device_stats), ex=120)
+                  print(f"Cached device_stats: {len(device_stats)} devices")
+
+                  # ========================================
+                  # Dashboard Query 2: Time-series data (last hour, 1-minute buckets)
+                  # ========================================
+                  query_timeseries = """
+                  SELECT 
+                      toStartOfMinute(timestamp) as minute,
+                      round(avg(temperature), 2) as avg_temp,
+                      round(avg(pressure), 2) as avg_pressure,
+                      count() as events
+                  FROM events
+                  WHERE timestamp >= now() - INTERVAL 1 HOUR
+                  GROUP BY minute
+                  ORDER BY minute
+                  """
+                  result = ch_client.query(query_timeseries)
+                  timeseries = [
+                      {
+                          'timestamp': row[0].isoformat(),
+                          'avg_temperature': row[1],
+                          'avg_pressure': row[2],
+                          'event_count': row[3]
+                      }
+                      for row in result.result_rows
+                  ]
+                  r.set('dashboard:timeseries_1h', json.dumps(timeseries), ex=120)
+                  print(f"Cached timeseries: {len(timeseries)} data points")
+
+                  # ========================================
+                  # Dashboard Query 3: Overall system health
+                  # ========================================
+                  query_health = """
+                  SELECT 
+                      count() as total_events,
+                      countIf(status = 'OK') as ok_count,
+                      countIf(status = 'WARN') as warn_count,
+                      uniq(device_id) as active_devices,
+                      round(avg(temperature), 2) as avg_temp,
+                      round(avg(pressure), 2) as avg_pressure
+                  FROM events
+                  WHERE timestamp >= now() - INTERVAL 5 MINUTE
+                  """
+                  result = ch_client.query(query_health)
+                  if result.result_rows:
+                      row = result.result_rows[0]
+                      health = {
+                          'total_events': row[0],
+                          'ok_count': row[1],
+                          'warn_count': row[2],
+                          'active_devices': row[3],
+                          'avg_temperature': row[4],
+                          'avg_pressure': row[5],
+                          'health_score': round((row[1] / max(row[0], 1)) * 100, 1),
+                          'updated_at': datetime.now().isoformat()
+                      }
+                      r.set('dashboard:system_health', json.dumps(health), ex=120)
+                      print(f"Cached system_health: {health}")
+
+                  # ========================================
+                  # Dashboard Query 4: Latest events per device (for live view)
+                  # ========================================
+                  query_latest = """
+                  SELECT 
+                      device_id,
+                      argMax(temperature, timestamp) as latest_temp,
+                      argMax(pressure, timestamp) as latest_pressure,
+                      argMax(status, timestamp) as latest_status,
+                      max(timestamp) as last_seen
+                  FROM events
+                  WHERE timestamp >= now() - INTERVAL 5 MINUTE
+                  GROUP BY device_id
+                  """
+                  result = ch_client.query(query_latest)
+                  latest_events = [
+                      {
+                          'device_id': row[0],
+                          'temperature': row[1],
+                          'pressure': row[2],
+                          'status': row[3],
+                          'last_seen': row[4].isoformat()
+                      }
+                      for row in result.result_rows
+                  ]
+                  r.set('dashboard:latest_events', json.dumps(latest_events), ex=60)
+                  print(f"Cached latest_events: {len(latest_events)} devices")
+
+                  # ========================================
+                  # Dashboard Query 5: Hourly aggregation (last 24 hours)
+                  # ========================================
+                  query_hourly = """
+                  SELECT 
+                      toStartOfHour(timestamp) as hour,
+                      count() as events,
+                      round(avg(temperature), 2) as avg_temp,
+                      round(avg(pressure), 2) as avg_pressure,
+                      uniq(device_id) as devices
+                  FROM events
+                  WHERE timestamp >= now() - INTERVAL 24 HOUR
+                  GROUP BY hour
+                  ORDER BY hour
+                  """
+                  result = ch_client.query(query_hourly)
+                  hourly_stats = [
+                      {
+                          'hour': row[0].isoformat(),
+                          'events': row[1],
+                          'avg_temperature': row[2],
+                          'avg_pressure': row[3],
+                          'active_devices': row[4]
+                      }
+                      for row in result.result_rows
+                  ]
+                  r.set('dashboard:hourly_stats_24h', json.dumps(hourly_stats), ex=300)
+                  print(f"Cached hourly_stats: {len(hourly_stats)} hours")
+
+                  print("Sync complete!")
+                  EOF
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"

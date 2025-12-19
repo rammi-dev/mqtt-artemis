@@ -42,3 +42,27 @@ dependencies:
     version: "1.9.0"
     repository: "https://konpyutaika.github.io/helm-charts"
     condition: nifikop.enabled
+
+  # Redis (for dashboard caching and real-time data)
+  - name: redis
+    version: "19.6.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+
+  # Dagster (for data orchestration, batch jobs, and ClickHouse management)
+  - name: dagster
+    version: "1.7.0"
+    repository: "https://dagster-io.github.io/helm"
+    condition: dagster.enabled
+
+  # Prometheus (metrics collection)
+  - name: prometheus
+    version: "25.27.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: prometheus.enabled
+
+  # Grafana (monitoring dashboards)
+  - name: grafana
+    version: "8.5.0"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: grafana.enabled

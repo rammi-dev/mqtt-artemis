@@ -1,0 +1,623 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: edge
+  labels:
+    grafana_dashboard: "1"
+data:
+  edge-analytics-overview.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 80},
+                  {"color": "red", "value": 90}
+                ]
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "id": 1,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "legendFormat": "CPU Usage"
+            }
+          ],
+          "title": "System CPU",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 70},
+                  {"color": "red", "value": 85}
+                ]
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "id": 2,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+              "legendFormat": "Memory Usage"
+            }
+          ],
+          "title": "System Memory",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null}
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "id": 3,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum(kube_pod_status_phase{phase=\"Running\", namespace=\"edge\"})",
+              "legendFormat": "Running Pods"
+            }
+          ],
+          "title": "Running Pods",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null}
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "id": 4,
+          "title": "Active Devices",
+          "type": "stat",
+          "targets": [
+            {
+              "datasource": {"type": "grafana-clickhouse-datasource"},
+              "rawSql": "SELECT uniq(device_id) FROM telemetry.events WHERE timestamp >= now() - INTERVAL 5 MINUTE"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {"type": "linear"},
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "short"
+            }
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "id": 5,
+          "options": {
+            "legend": {"calcs": [], "displayMode": "list", "placement": "bottom"},
+            "tooltip": {"mode": "single", "sort": "none"}
+          },
+          "targets": [
+            {
+              "rawSql": "SELECT toStartOfMinute(timestamp) as time, count() as events FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY time ORDER BY time"
+            }
+          ],
+          "title": "Events per Minute",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "celsius"
+            }
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "id": 6,
+          "options": {
+            "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"},
+            "tooltip": {"mode": "multi", "sort": "none"}
+          },
+          "targets": [
+            {
+              "rawSql": "SELECT toStartOfMinute(timestamp) as time, device_id, avg(temperature) as temp FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY time, device_id ORDER BY time"
+            }
+          ],
+          "title": "Temperature by Device",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              }
+            }
+          },
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12},
+          "id": 7,
+          "options": {
+            "legend": {"displayMode": "table", "placement": "right"},
+            "pieType": "pie",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "tooltip": {"mode": "single", "sort": "none"}
+          },
+          "targets": [
+            {
+              "rawSql": "SELECT status, count() as count FROM telemetry.events WHERE timestamp >= now() - INTERVAL 5 MINUTE GROUP BY status"
+            }
+          ],
+          "title": "Event Status Distribution",
+          "type": "piechart"
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 5},
+                  {"color": "red", "value": 10}
+                ]
+              }
+            }
+          },
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 12},
+          "id": 8,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "horizontal",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": true},
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "rawSql": "SELECT device_id, countIf(status = 'WARN') as warnings FROM telemetry.events WHERE timestamp >= now() - INTERVAL 5 MINUTE GROUP BY device_id ORDER BY warnings DESC LIMIT 10"
+            }
+          ],
+          "title": "Devices by Warning Count",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource"
+          },
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 12},
+          "id": 9,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          },
+          "targets": [
+            {
+              "rawSql": "SELECT device_id, argMax(temperature, timestamp) as last_temp, argMax(pressure, timestamp) as last_pressure, argMax(status, timestamp) as status, max(timestamp) as last_seen FROM telemetry.events WHERE timestamp >= now() - INTERVAL 5 MINUTE GROUP BY device_id ORDER BY device_id"
+            }
+          ],
+          "title": "Device Status Table",
+          "type": "table"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["edge-analytics", "telemetry"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "timepicker": {},
+      "timezone": "",
+      "title": "Edge Analytics Overview",
+      "uid": "edge-analytics-overview",
+      "version": 1,
+      "weekStart": ""
+    }
+  clickhouse-metrics.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 0},
+          "id": 1,
+          "targets": [
+            {"expr": "rate(ClickHouseProfileEvents_InsertedRows[5m])", "legendFormat": "Inserted Rows/s"}
+          ],
+          "title": "ClickHouse Insert Rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 0},
+          "id": 2,
+          "targets": [
+            {"expr": "ClickHouseMetrics_Query", "legendFormat": "Active Queries"}
+          ],
+          "title": "Active Queries",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 0},
+          "id": 3,
+          "targets": [
+            {"expr": "ClickHouseAsyncMetrics_TotalBytesOfMergeTreeTables", "legendFormat": "Storage"}
+          ],
+          "title": "MergeTree Storage",
+          "type": "stat",
+          "fieldConfig": {"defaults": {"unit": "bytes"}}
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "id": 4,
+          "targets": [
+            {"expr": "rate(ClickHouseProfileEvents_SelectedRows[5m])", "legendFormat": "Selected Rows/s"}
+          ],
+          "title": "Query Read Rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "id": 5,
+          "targets": [
+            {"expr": "ClickHouseMetrics_MemoryTracking", "legendFormat": "Memory Usage"}
+          ],
+          "title": "Memory Usage",
+          "type": "timeseries",
+          "fieldConfig": {"defaults": {"unit": "bytes"}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 14},
+          "id": 6,
+          "title": "Total Events",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT count() FROM telemetry.events"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 14},
+          "id": 7,
+          "title": "Unique Devices",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT uniq(device_id) FROM telemetry.events"}
+          ]
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 14},
+          "id": 8,
+          "title": "Data Size",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT sum(bytes_on_disk) FROM system.parts WHERE database = 'telemetry' AND active"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes"}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "id": 9,
+          "title": "Events per Device (Last Hour)",
+          "type": "barchart",
+          "targets": [
+            {"rawSql": "SELECT device_id, count() as events FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY device_id ORDER BY events DESC LIMIT 20"}
+          ]
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "id": 10,
+          "title": "Query Performance",
+          "type": "table",
+          "targets": [
+            {"rawSql": "SELECT query_duration_ms, read_rows, result_rows, memory_usage, query FROM system.query_log WHERE type = 'QueryFinish' AND event_date = today() ORDER BY query_start_time DESC LIMIT 10"}
+          ]
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 28},
+          "id": 11,
+          "title": "Partition Info",
+          "type": "table",
+          "targets": [
+            {"rawSql": "SELECT partition, count() as parts, sum(rows) as total_rows, formatReadableSize(sum(bytes_on_disk)) as size FROM system.parts WHERE database = 'telemetry' AND active GROUP BY partition ORDER BY partition DESC"}
+          ]
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 28},
+          "id": 12,
+          "title": "Hourly Data Volume",
+          "type": "timeseries",
+          "targets": [
+            {"rawSql": "SELECT toStartOfHour(timestamp) as time, count() as events FROM telemetry.events WHERE timestamp >= now() - INTERVAL 24 HOUR GROUP BY time ORDER BY time"}
+          ]
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["clickhouse", "database"],
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "ClickHouse Metrics",
+      "uid": "clickhouse-metrics"
+    }
+  pipeline-health.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "id": 1,
+          "title": "NiFi FlowFiles Queued",
+          "type": "stat",
+          "targets": [
+            {"expr": "nifi_amount_flowfiles_queued", "legendFormat": "Queued"}
+          ]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "id": 2,
+          "title": "Redis Connected Clients",
+          "type": "stat",
+          "targets": [
+            {"expr": "redis_connected_clients", "legendFormat": "Clients"}
+          ]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "id": 3,
+          "title": "Redis Memory",
+          "type": "stat",
+          "targets": [
+            {"expr": "redis_memory_used_bytes", "legendFormat": "Memory"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes"}}
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "id": 4,
+          "title": "Dagster Runs",
+          "type": "stat",
+          "targets": [
+            {"expr": "dagster_run_count_total", "legendFormat": "Total Runs"}
+          ]
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4},
+          "id": 5,
+          "title": "Data Pipeline Throughput",
+          "type": "timeseries",
+          "targets": [
+            {
+              "rawSql": "SELECT toStartOfMinute(timestamp) as time, count() as events FROM telemetry.events WHERE timestamp >= now() - INTERVAL 6 HOUR GROUP BY time ORDER BY time"
+            }
+          ]
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 12},
+          "id": 6,
+          "title": "Data Freshness",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT dateDiff('second', max(timestamp), now()) as lag_seconds FROM telemetry.events"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 60}, {"color": "red", "value": 300}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 12},
+          "id": 7,
+          "title": "Warning Rate",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT round(countIf(status = 'WARN') * 100.0 / count(), 2) as warning_pct FROM telemetry.events WHERE timestamp >= now() - INTERVAL 5 MINUTE"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 10}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 12},
+          "id": 8,
+          "title": "Events Last 5 Min",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT count() FROM telemetry.events WHERE timestamp >= now() - INTERVAL 5 MINUTE"}
+          ]
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+          "id": 9,
+          "title": "Temperature Anomalies",
+          "type": "timeseries",
+          "targets": [
+            {"rawSql": "SELECT toStartOfMinute(timestamp) as time, device_id, avg(temperature) as temp FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR AND (temperature > 80 OR temperature < 10) GROUP BY time, device_id ORDER BY time"}
+          ]
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+          "id": 10,
+          "title": "Device Uptime (Events/Hour)",
+          "type": "heatmap",
+          "targets": [
+            {"rawSql": "SELECT toStartOfHour(timestamp) as time, device_id, count() as events FROM telemetry.events WHERE timestamp >= now() - INTERVAL 24 HOUR GROUP BY time, device_id ORDER BY time"}
+          ]
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["pipeline", "nifi", "redis", "clickhouse"],
+      "time": {"from": "now-6h", "to": "now"},
+      "title": "Pipeline Health",
+      "uid": "pipeline-health"
+    }

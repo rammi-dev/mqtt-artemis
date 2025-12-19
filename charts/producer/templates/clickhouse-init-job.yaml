@@ -15,24 +15,136 @@ spec:
             echo "Waiting for ClickHouse to be ready..."
             sleep 30
             
+            CH_URL="http://clickhouse-telemetry-db.clickhouse.svc.cluster.local:8123/"
+            AUTH="-u admin:password"
+            
             echo "Creating Database..."
-            curl -u admin:password -X POST "http://clickhouse-telemetry-db.clickhouse.svc.cluster.local:8123/" \
-              -d "CREATE DATABASE IF NOT EXISTS telemetry"
+            curl $AUTH -X POST "$CH_URL" -d "CREATE DATABASE IF NOT EXISTS telemetry"
             
-            echo "Creating Table..."
-            curl -u admin:password -X POST "http://clickhouse-telemetry-db.clickhouse.svc.cluster.local:8123/" \
-              -d "CREATE TABLE IF NOT EXISTS telemetry.events (
-                timestamp DateTime64(3),
-                device_id String,
-                temperature Float32,
-                pressure Float32,
-                status String,
-                msg_id UInt64
-              ) ENGINE = MergeTree()
-              ORDER BY (device_id, timestamp)
-              PARTITION BY toYYYYMM(timestamp)
-              SETTINGS index_granularity = 8192"
+            echo "Creating Main Events Table (Optimized Schema)..."
+            curl $AUTH -X POST "$CH_URL" -d "
+            CREATE TABLE IF NOT EXISTS telemetry.events (
+                timestamp DateTime64(3) CODEC(DoubleDelta),
+                device_id LowCardinality(String),
+                device_type LowCardinality(String),
+                location LowCardinality(String),
+                status LowCardinality(String),
+                msg_id UInt64 CODEC(Delta),
+                temperature Float32 CODEC(Gorilla),
+                pressure Float32 CODEC(Gorilla),
+                humidity Float32 CODEC(Gorilla),
+                voltage Float32 CODEC(Gorilla),
+                light_intensity Float32 CODEC(Gorilla),
+                co2 Float32 CODEC(Gorilla),
+                vibration Float32 CODEC(Gorilla),
+                power_consumption Float32 CODEC(Gorilla),
+                signal_strength Float32 CODEC(Gorilla),
+                battery_level Float32 CODEC(Gorilla)
+            ) ENGINE = MergeTree()
+            PARTITION BY toYYYYMM(timestamp)
+            ORDER BY (device_id, timestamp)
+            TTL timestamp + INTERVAL 90 DAY
+            SETTINGS index_granularity = 8192"
             
-            echo "Schema Created Successfully."
+            echo "Creating 1-Minute Aggregation Materialized View..."
+            curl $AUTH -X POST "$CH_URL" -d "
+            CREATE MATERIALIZED VIEW IF NOT EXISTS telemetry.events_1m
+            ENGINE = SummingMergeTree()
+            PARTITION BY toYYYYMMDD(timestamp)
+            ORDER BY (device_id, timestamp)
+            AS SELECT
+                toStartOfMinute(timestamp) as timestamp,
+                device_id,
+                device_type,
+                location,
+                count() as events,
+                sum(temperature) as sum_temp,
+                min(temperature) as min_temp,
+                max(temperature) as max_temp,
+                sum(pressure) as sum_pressure,
+                sum(humidity) as sum_humidity,
+                sum(power_consumption) as sum_power,
+                countIf(status = 'WARN') as warnings,
+                countIf(status = 'CRITICAL') as criticals
+            FROM telemetry.events
+            GROUP BY device_id, device_type, location, toStartOfMinute(timestamp)"
+            
+            echo "Creating Hourly Aggregation Materialized View..."
+            curl $AUTH -X POST "$CH_URL" -d "
+            CREATE MATERIALIZED VIEW IF NOT EXISTS telemetry.events_1h
+            ENGINE = SummingMergeTree()
+            PARTITION BY toYYYYMM(timestamp)
+            ORDER BY (device_id, timestamp)
+            AS SELECT
+                toStartOfHour(timestamp) as timestamp,
+                device_id,
+                device_type,
+                location,
+                count() as events,
+                sum(temperature) as sum_temp,
+                min(temperature) as min_temp,
+                max(temperature) as max_temp,
+                sum(pressure) as sum_pressure,
+                sum(humidity) as sum_humidity,
+                sum(power_consumption) as sum_power,
+                avg(battery_level) as avg_battery,
+                avg(signal_strength) as avg_signal,
+                countIf(status = 'WARN') as warnings,
+                countIf(status = 'CRITICAL') as criticals
+            FROM telemetry.events
+            GROUP BY device_id, device_type, location, toStartOfHour(timestamp)"
+            
+            echo "Creating Device Status View..."
+            curl $AUTH -X POST "$CH_URL" -d "
+            CREATE VIEW IF NOT EXISTS telemetry.device_status AS
+            SELECT 
+                device_id,
+                device_type,
+                location,
+                argMax(temperature, timestamp) as last_temperature,
+                argMax(pressure, timestamp) as last_pressure,
+                argMax(humidity, timestamp) as last_humidity,
+                argMax(battery_level, timestamp) as last_battery,
+                argMax(status, timestamp) as last_status,
+                max(timestamp) as last_seen,
+                count() as total_events
+            FROM telemetry.events
+            WHERE timestamp >= now() - INTERVAL 1 HOUR
+            GROUP BY device_id, device_type, location"
+            
+            echo "Creating Anomaly Detection View..."
+            curl $AUTH -X POST "$CH_URL" -d "
+            CREATE VIEW IF NOT EXISTS telemetry.anomalies AS
+            SELECT 
+                timestamp,
+                device_id,
+                device_type,
+                location,
+                temperature,
+                pressure,
+                status,
+                multiIf(
+                    temperature > 40, 'temperature_critical',
+                    temperature > 35, 'temperature_warn',
+                    pressure > 1070, 'pressure_critical',
+                    pressure > 1050, 'pressure_warn',
+                    battery_level < 10, 'battery_critical',
+                    battery_level < 20, 'battery_warn',
+                    'normal'
+                ) as anomaly_type
+            FROM telemetry.events
+            WHERE status IN ('WARN', 'CRITICAL')
+            ORDER BY timestamp DESC"
+            
+            echo "Adding Indexes..."
+            curl $AUTH -X POST "$CH_URL" -d "
+            ALTER TABLE telemetry.events ADD INDEX IF NOT EXISTS idx_status status TYPE set(100) GRANULARITY 4"
+            
+            curl $AUTH -X POST "$CH_URL" -d "
+            ALTER TABLE telemetry.events ADD INDEX IF NOT EXISTS idx_location location TYPE set(100) GRANULARITY 4"
+            
+            echo "Schema Created Successfully!"
+            echo "Tables: events, events_1m, events_1h"
+            echo "Views: device_status, anomalies"
       restartPolicy: OnFailure
 

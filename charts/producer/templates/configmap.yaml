@@ -6,49 +6,558 @@ metadata:
     {{- include "producer.labels" . | nindent 4 }}
 data:
   produce.py: |
+    """
+    IoT Device Simulator
+    
+    Simulates 10-100 IoT devices sending telemetry data with realistic trends:
+    - Temperature, Pressure, Humidity (environmental)
+    - Voltage, Battery Level (power)
+    - Light Intensity, CO2, Vibration (sensors)
+    - Power Consumption, Signal Strength (operational)
+    
+    Data Flow: Producer -> Artemis MQTT -> NiFi -> ClickHouse
+    Hot Metrics: 10 base metrics cached in Redis with 15 min TTL
+    """
+    
     import os
+    import sys
     import time
     import json
+    import math
+    import random
+    import threading
+    from datetime import datetime, timezone
+    from typing import Dict, List, Any, Optional
+    from dataclasses import dataclass, field, asdict
+    from collections import deque
     import paho.mqtt.client as mqtt
-    from datetime import datetime
-
-    BROKER_URL = os.getenv('BROKER_URL', 'localhost')
-    BROKER_PORT = int(os.getenv('BROKER_PORT', '1883'))
-    TOPIC = os.getenv('TOPIC', 'test')
-    FREQUENCY = float(os.getenv('FREQUENCY', '1.0'))
-    DURATION = int(os.getenv('DURATION', '60'))
-
-    print(f"Connecting to {BROKER_URL}:{BROKER_PORT}...")
-    client = mqtt.Client()
     
+    # Optional Redis import
     try:
-        client.connect(BROKER_URL, BROKER_PORT, 60)
-        client.loop_start()
+        import redis
+        REDIS_AVAILABLE = True
+    except ImportError:
+        REDIS_AVAILABLE = False
+        print("Warning: Redis not available, hot cache disabled")
+    
+    # Configuration from environment
+    MQTT_BROKER_HOST = os.getenv('MQTT_BROKER_HOST', 'localhost')
+    MQTT_BROKER_PORT = int(os.getenv('MQTT_BROKER_PORT', '1883'))
+    MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'raw-telemetry')
+    MQTT_QOS = int(os.getenv('MQTT_QOS', '1'))
+    
+    DEVICE_COUNT = int(os.getenv('DEVICE_COUNT', '50'))
+    DEVICE_PREFIX = os.getenv('DEVICE_PREFIX', 'device')
+    
+    SIM_FREQUENCY = float(os.getenv('SIM_FREQUENCY', '0.5'))
+    SIM_DURATION = int(os.getenv('SIM_DURATION', '3600'))
+    SIM_BATCH_SIZE = int(os.getenv('SIM_BATCH_SIZE', '10'))
+    
+    ANOMALY_ENABLED = os.getenv('ANOMALY_ENABLED', 'true').lower() == 'true'
+    ANOMALY_PROBABILITY = float(os.getenv('ANOMALY_PROBABILITY', '0.02'))
+    
+    REDIS_ENABLED = os.getenv('REDIS_ENABLED', 'true').lower() == 'true' and REDIS_AVAILABLE
+    REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+    REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+    REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
+    REDIS_TTL = int(os.getenv('REDIS_TTL', '900'))  # 15 minutes
+    
+    
+    @dataclass
+    class MetricConfig:
+        """Configuration for a single metric with trend behavior"""
+        name: str
+        base: float
+        range: float
+        daily_cycle: bool = False
+        trend: float = 0.0
+        noise: float = 1.0
+        spike_prob: float = 0.0
+        unit: str = ""
+        warn_threshold: Optional[float] = None
+        critical_threshold: Optional[float] = None
+    
+    
+    @dataclass
+    class DeviceState:
+        """Maintains state for realistic device simulation"""
+        device_id: str
+        device_type: str
+        location: str
+        metrics: Dict[str, float] = field(default_factory=dict)
+        drift: Dict[str, float] = field(default_factory=dict)  # Per-metric drift
+        stuck_counter: int = 0
+        last_values: Dict[str, float] = field(default_factory=dict)
+        start_time: float = field(default_factory=time.time)
+        msg_count: int = 0
+    
+    
+    class IoTSimulator:
+        """Multi-device IoT telemetry simulator with realistic patterns"""
         
-        start_time = time.time()
-        msg_count = 0
+        METRIC_CONFIGS = [
+            MetricConfig("temperature", 25.0, 15.0, True, 0.001, 0.5, 0.0, "celsius", 35.0, 40.0),
+            MetricConfig("pressure", 1013.25, 50.0, False, 0.0, 2.0, 0.0, "hPa", 1050.0, 1070.0),
+            MetricConfig("humidity", 60.0, 40.0, True, -0.0005, 3.0, 0.0, "percent", 85.0, 95.0),
+            MetricConfig("voltage", 3.3, 0.5, False, -0.0001, 0.02, 0.0, "volts", 2.8, 2.5),
+            MetricConfig("light_intensity", 500.0, 800.0, True, 0.0, 50.0, 0.0, "lux"),
+            MetricConfig("co2", 400.0, 200.0, True, 0.002, 10.0, 0.0, "ppm"),
+            MetricConfig("vibration", 0.5, 2.0, False, 0.0, 0.3, 0.05, "g"),
+            MetricConfig("power_consumption", 150.0, 100.0, True, 0.001, 10.0, 0.0, "watts"),
+            MetricConfig("signal_strength", -70.0, 30.0, False, 0.0, 5.0, 0.0, "dBm"),
+            MetricConfig("battery_level", 100.0, 0.0, False, -0.005, 0.1, 0.0, "percent", 20.0, 10.0),
+        ]
         
-        print(f"Starting producer loop. Duration: {DURATION}s, Interval: {FREQUENCY}s")
+        LOCATIONS = [
+            "floor-1-north", "floor-1-south", "floor-1-east", "floor-1-west",
+            "floor-2-north", "floor-2-south", "floor-2-east", "floor-2-west",
+            "basement", "rooftop", "warehouse-a", "warehouse-b",
+            "outdoor-north", "outdoor-south", "server-room", "lobby"
+        ]
         
-        while (time.time() - start_time) < DURATION:
-            import random
-            payload = {
-                "timestamp": datetime.now().isoformat(),
-                "device_id": f"sensor-{random.randint(1, 5)}",
-                "temperature": round(random.uniform(20.0, 30.0), 2),
-                "pressure": round(random.uniform(100.0, 105.0), 2),
-                "status": "OK" if random.random() > 0.1 else "WARN",
-                "msg_id": msg_count
+        DEVICE_TYPES = ["temperature-sensor", "pressure-sensor", "multi-sensor"]
+        
+        def __init__(self, device_count: int):
+            self.device_count = min(max(device_count, 10), 100)
+            self.devices: Dict[str, DeviceState] = {}
+            self.mqtt_client: Optional[mqtt.Client] = None
+            self.redis_client: Optional[Any] = None
+            self.running = False
+            self.stats = {
+                "messages_sent": 0,
+                "errors": 0,
+                "warnings_generated": 0,
+                "anomalies_generated": 0,
+                "start_time": None
             }
-            client.publish(TOPIC, json.dumps(payload))
-            print(f"Published message {msg_count} to {TOPIC}")
-            msg_count += 1
-            time.sleep(FREQUENCY)
-            
-        print(f"Finished. Total messages: {msg_count}")
-        client.loop_stop()
-        client.disconnect()
+            self.recent_readings: deque = deque(maxlen=1000)
+            self._init_devices()
         
-    except Exception as e:
-        print(f"Error: {e}")
-        exit(1)
+        def _init_devices(self):
+            """Initialize all simulated devices with unique characteristics"""
+            print(f"Initializing {self.device_count} devices...")
+            
+            for i in range(self.device_count):
+                device_id = f"{DEVICE_PREFIX}-{i+1:04d}"
+                device_type = random.choices(
+                    self.DEVICE_TYPES, 
+                    weights=[40, 30, 30]
+                )[0]
+                location = random.choice(self.LOCATIONS)
+                
+                # Initialize device state with random starting values
+                device = DeviceState(
+                    device_id=device_id,
+                    device_type=device_type,
+                    location=location
+                )
+                
+                # Set initial values with device-specific variation
+                device_variation = random.uniform(0.8, 1.2)
+                for config in self.METRIC_CONFIGS:
+                    base = config.base * device_variation
+                    device.metrics[config.name] = base
+                    device.drift[config.name] = random.uniform(-0.01, 0.01)
+                    device.last_values[config.name] = base
+                
+                self.devices[device_id] = device
+            
+            print(f"Initialized {len(self.devices)} devices")
+        
+        def _get_daily_factor(self, metric_name: str) -> float:
+            """Calculate daily cycle factor based on time of day"""
+            hour = datetime.now().hour + datetime.now().minute / 60.0
+            
+            if metric_name in ["temperature", "light_intensity", "power_consumption"]:
+                # Peak at 2 PM (14:00)
+                return math.sin((hour - 6) * math.pi / 12) * 0.5 + 0.5
+            elif metric_name in ["humidity", "co2"]:
+                # Inverse - peak at night
+                return -math.sin((hour - 6) * math.pi / 12) * 0.3 + 0.5
+            return 0.5
+        
+        def _generate_anomaly(self, device: DeviceState, metric_name: str, value: float) -> tuple:
+            """Generate anomaly if conditions are met"""
+            if not ANOMALY_ENABLED:
+                return value, None
+            
+            if random.random() > ANOMALY_PROBABILITY:
+                return value, None
+            
+            anomaly_type = random.choice(["spike", "dropout", "drift", "stuck"])
+            original_value = value
+            
+            if anomaly_type == "spike":
+                # Sudden 2-5x jump
+                multiplier = random.uniform(2.0, 5.0) * random.choice([-1, 1])
+                value = value * multiplier
+            elif anomaly_type == "dropout":
+                # Zero or NaN
+                value = 0.0
+            elif anomaly_type == "drift":
+                # Gradual deviation (increase drift factor)
+                device.drift[metric_name] *= 2.0
+            elif anomaly_type == "stuck":
+                # Return same value as last time
+                device.stuck_counter = random.randint(5, 20)
+                value = device.last_values.get(metric_name, value)
+            
+            self.stats["anomalies_generated"] += 1
+            return value, {
+                "type": anomaly_type,
+                "metric": metric_name,
+                "original": original_value,
+                "modified": value
+            }
+        
+        def _generate_reading(self, device: DeviceState) -> Dict[str, Any]:
+            """Generate a single reading with all metrics for a device"""
+            elapsed = time.time() - device.start_time
+            readings = {}
+            status = "OK"
+            anomalies = []
+            
+            for config in self.METRIC_CONFIGS:
+                name = config.name
+                
+                # Skip some metrics based on device type
+                if device.device_type == "temperature-sensor" and name not in [
+                    "temperature", "humidity", "voltage", "battery_level", "signal_strength"
+                ]:
+                    continue
+                elif device.device_type == "pressure-sensor" and name not in [
+                    "pressure", "voltage", "battery_level", "signal_strength"
+                ]:
+                    continue
+                
+                # Check if stuck anomaly is active
+                if device.stuck_counter > 0:
+                    device.stuck_counter -= 1
+                    readings[name] = device.last_values.get(name, config.base)
+                    continue
+                
+                # Base value with device-specific variation
+                base_value = device.metrics[name]
+                
+                # Apply daily cycle
+                if config.daily_cycle:
+                    cycle_factor = self._get_daily_factor(name)
+                    base_value += config.range * (cycle_factor - 0.5)
+                
+                # Apply trend over time
+                trend_value = config.trend * elapsed
+                
+                # Apply device-specific drift
+                drift_value = device.drift[name] * elapsed
+                
+                # Add noise
+                noise_value = random.gauss(0, config.noise)
+                
+                # Handle spikes for vibration
+                if config.spike_prob > 0 and random.random() < config.spike_prob:
+                    noise_value += config.range * random.uniform(1.5, 3.0)
+                
+                # Calculate final value
+                value = base_value + trend_value + drift_value + noise_value
+                
+                # Apply range bounds for battery
+                if name == "battery_level":
+                    value = max(0, min(100, value))
+                
+                # Check for anomalies
+                value, anomaly = self._generate_anomaly(device, name, value)
+                if anomaly:
+                    anomalies.append(anomaly)
+                
+                # Round to appropriate precision
+                value = round(value, 2)
+                readings[name] = value
+                device.last_values[name] = value
+                
+                # Check thresholds for status
+                if config.critical_threshold and value >= config.critical_threshold:
+                    status = "CRITICAL"
+                    self.stats["warnings_generated"] += 1
+                elif config.warn_threshold and value >= config.warn_threshold:
+                    if status != "CRITICAL":
+                        status = "WARN"
+                    self.stats["warnings_generated"] += 1
+            
+            device.msg_count += 1
+            
+            return {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "device_id": device.device_id,
+                "device_type": device.device_type,
+                "location": device.location,
+                "status": status,
+                "msg_id": device.msg_count,
+                "metrics": readings,
+                "anomalies": anomalies if anomalies else None
+            }
+        
+        def _connect_mqtt(self) -> bool:
+            """Establish MQTT connection to Artemis broker"""
+            print(f"Connecting to MQTT broker at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}...")
+            
+            try:
+                self.mqtt_client = mqtt.Client(
+                    client_id=f"iot-simulator-{random.randint(1000, 9999)}",
+                    protocol=mqtt.MQTTv311
+                )
+                
+                def on_connect(client, userdata, flags, rc):
+                    if rc == 0:
+                        print("MQTT connected successfully")
+                    else:
+                        print(f"MQTT connection failed with code {rc}")
+                
+                def on_disconnect(client, userdata, rc):
+                    print(f"MQTT disconnected with code {rc}")
+                
+                self.mqtt_client.on_connect = on_connect
+                self.mqtt_client.on_disconnect = on_disconnect
+                
+                self.mqtt_client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
+                self.mqtt_client.loop_start()
+                time.sleep(1)  # Wait for connection
+                return True
+                
+            except Exception as e:
+                print(f"MQTT connection error: {e}")
+                return False
+        
+        def _connect_redis(self) -> bool:
+            """Establish Redis connection for hot cache"""
+            if not REDIS_ENABLED:
+                return False
+            
+            print(f"Connecting to Redis at {REDIS_HOST}:{REDIS_PORT}...")
+            
+            try:
+                self.redis_client = redis.Redis(
+                    host=REDIS_HOST,
+                    port=REDIS_PORT,
+                    password=REDIS_PASSWORD if REDIS_PASSWORD else None,
+                    decode_responses=True
+                )
+                self.redis_client.ping()
+                print("Redis connected successfully")
+                return True
+                
+            except Exception as e:
+                print(f"Redis connection error: {e}")
+                self.redis_client = None
+                return False
+        
+        def _update_redis_hot_cache(self, readings: List[Dict]):
+            """Update 10 base metrics in Redis with 15 min TTL"""
+            if not self.redis_client:
+                return
+            
+            try:
+                pipe = self.redis_client.pipeline()
+                now = datetime.now(timezone.utc).isoformat()
+                
+                # Track aggregations
+                temps = []
+                pressures = []
+                active_devices = set()
+                warnings = 0
+                anomalies = 0
+                
+                for reading in readings:
+                    device_id = reading["device_id"]
+                    metrics = reading.get("metrics", {})
+                    active_devices.add(device_id)
+                    
+                    # 1. Latest reading per device
+                    pipe.hset(f"metrics:latest:{device_id}", mapping={
+                        "timestamp": reading["timestamp"],
+                        "status": reading["status"],
+                        **{k: str(v) for k, v in metrics.items()}
+                    })
+                    pipe.expire(f"metrics:latest:{device_id}", REDIS_TTL)
+                    
+                    # Collect for aggregations
+                    if "temperature" in metrics:
+                        temps.append(metrics["temperature"])
+                    if "pressure" in metrics:
+                        pressures.append(metrics["pressure"])
+                    if reading["status"] in ["WARN", "CRITICAL"]:
+                        warnings += 1
+                    if reading.get("anomalies"):
+                        anomalies += len(reading["anomalies"])
+                
+                # 2. 5-min avg temperature
+                if temps:
+                    avg_temp = sum(temps) / len(temps)
+                    pipe.setex("metrics:avg:temperature:5m", REDIS_TTL, round(avg_temp, 2))
+                
+                # 3. 5-min avg pressure
+                if pressures:
+                    avg_pressure = sum(pressures) / len(pressures)
+                    pipe.setex("metrics:avg:pressure:5m", REDIS_TTL, round(avg_pressure, 2))
+                
+                # 4. 15-min max temperature
+                if temps:
+                    pipe.setex("metrics:max:temperature:15m", REDIS_TTL, max(temps))
+                
+                # 5. 15-min min temperature  
+                if temps:
+                    pipe.setex("metrics:min:temperature:15m", REDIS_TTL, min(temps))
+                
+                # 6. Events per minute (increment counter)
+                pipe.incr("metrics:count:events:1m")
+                pipe.expire("metrics:count:events:1m", 60)
+                
+                # 7. Active device count
+                for device in active_devices:
+                    pipe.sadd("metrics:active:devices", device)
+                pipe.expire("metrics:active:devices", REDIS_TTL)
+                
+                # 8. Warning count (increment)
+                if warnings > 0:
+                    pipe.incrby("metrics:warnings:count", warnings)
+                    pipe.expire("metrics:warnings:count", REDIS_TTL)
+                
+                # 9. Anomaly count (increment)
+                if anomalies > 0:
+                    pipe.incrby("metrics:anomalies:count", anomalies)
+                    pipe.expire("metrics:anomalies:count", REDIS_TTL)
+                
+                # 10. Message throughput
+                elapsed = time.time() - self.stats["start_time"] if self.stats["start_time"] else 1
+                throughput = self.stats["messages_sent"] / max(elapsed, 1)
+                pipe.setex("metrics:throughput:msg_per_sec", REDIS_TTL, round(throughput, 2))
+                
+                # Execute pipeline
+                pipe.execute()
+                
+            except Exception as e:
+                print(f"Redis update error: {e}")
+        
+        def _publish_batch(self, readings: List[Dict]):
+            """Publish batch of readings to MQTT"""
+            for reading in readings:
+                try:
+                    # Flatten for ClickHouse compatibility
+                    flat_reading = {
+                        "timestamp": reading["timestamp"],
+                        "device_id": reading["device_id"],
+                        "device_type": reading["device_type"],
+                        "location": reading["location"],
+                        "status": reading["status"],
+                        "msg_id": reading["msg_id"],
+                        **reading.get("metrics", {})
+                    }
+                    
+                    payload = json.dumps(flat_reading)
+                    result = self.mqtt_client.publish(
+                        MQTT_TOPIC, 
+                        payload, 
+                        qos=MQTT_QOS
+                    )
+                    
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        self.stats["messages_sent"] += 1
+                    else:
+                        self.stats["errors"] += 1
+                        
+                except Exception as e:
+                    self.stats["errors"] += 1
+                    print(f"Publish error: {e}")
+            
+            # Update Redis hot cache
+            self._update_redis_hot_cache(readings)
+        
+        def run(self):
+            """Main simulation loop"""
+            print(f"\n{'='*60}")
+            print(f"IoT Device Simulator")
+            print(f"{'='*60}")
+            print(f"Devices: {self.device_count}")
+            print(f"Duration: {SIM_DURATION}s")
+            print(f"Frequency: {SIM_FREQUENCY}s per device")
+            print(f"Batch Size: {SIM_BATCH_SIZE}")
+            print(f"Anomalies: {'Enabled' if ANOMALY_ENABLED else 'Disabled'}")
+            print(f"Redis Cache: {'Enabled' if REDIS_ENABLED else 'Disabled'}")
+            print(f"{'='*60}\n")
+            
+            # Connect to services
+            if not self._connect_mqtt():
+                print("Failed to connect to MQTT. Exiting.")
+                return
+            
+            self._connect_redis()  # Optional
+            
+            self.stats["start_time"] = time.time()
+            self.running = True
+            device_list = list(self.devices.values())
+            batch = []
+            
+            try:
+                while self.running and (time.time() - self.stats["start_time"]) < SIM_DURATION:
+                    # Generate readings for random subset of devices
+                    active_count = random.randint(
+                        self.device_count // 2, 
+                        self.device_count
+                    )
+                    active_devices = random.sample(device_list, active_count)
+                    
+                    for device in active_devices:
+                        reading = self._generate_reading(device)
+                        batch.append(reading)
+                        self.recent_readings.append(reading)
+                        
+                        # Publish when batch is full
+                        if len(batch) >= SIM_BATCH_SIZE:
+                            self._publish_batch(batch)
+                            batch = []
+                    
+                    # Status update every 10 seconds
+                    elapsed = time.time() - self.stats["start_time"]
+                    if int(elapsed) % 10 == 0:
+                        rate = self.stats["messages_sent"] / max(elapsed, 1)
+                        print(f"[{int(elapsed)}s] Messages: {self.stats['messages_sent']}, "
+                              f"Rate: {rate:.1f}/s, Warnings: {self.stats['warnings_generated']}, "
+                              f"Anomalies: {self.stats['anomalies_generated']}")
+                    
+                    time.sleep(SIM_FREQUENCY)
+                
+                # Publish remaining batch
+                if batch:
+                    self._publish_batch(batch)
+                    
+            except KeyboardInterrupt:
+                print("\nInterrupted by user")
+            finally:
+                self.running = False
+                self._shutdown()
+        
+        def _shutdown(self):
+            """Clean shutdown"""
+            print(f"\n{'='*60}")
+            print("Simulation Complete")
+            print(f"{'='*60}")
+            
+            elapsed = time.time() - self.stats["start_time"] if self.stats["start_time"] else 0
+            print(f"Duration: {elapsed:.1f}s")
+            print(f"Total Messages: {self.stats['messages_sent']}")
+            print(f"Average Rate: {self.stats['messages_sent'] / max(elapsed, 1):.1f} msg/s")
+            print(f"Warnings: {self.stats['warnings_generated']}")
+            print(f"Anomalies: {self.stats['anomalies_generated']}")
+            print(f"Errors: {self.stats['errors']}")
+            print(f"{'='*60}\n")
+            
+            if self.mqtt_client:
+                self.mqtt_client.loop_stop()
+                self.mqtt_client.disconnect()
+            
+            if self.redis_client:
+                self.redis_client.close()
+    
+    
+    if __name__ == "__main__":
+        simulator = IoTSimulator(DEVICE_COUNT)
+        simulator.run()

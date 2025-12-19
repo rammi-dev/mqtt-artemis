@@ -1,18 +1,194 @@
-# MQTT Producer Configuration
+# IoT Device Simulator Configuration
 image:
   repository: python
-  tag: 3.9-slim
+  tag: 3.11-slim
   pullPolicy: IfNotPresent
 
-brokerUrl: "tcp://artemis-activemq-artemis-master-0.artemis-activemq-artemis-master.default.svc.cluster.local:1883"
-topic: "raw-telemetry"
-frequency: 0.1 # Message interval in seconds (0.1s = 10 msg/sec)
-duration: 60   # Run duration in seconds
+# MQTT Broker Configuration
+mqtt:
+  brokerHost: "artemis-activemq-artemis-master-0.artemis-activemq-artemis-master.edge.svc.cluster.local"
+  brokerPort: 1883
+  topic: "raw-telemetry"
+  qos: 1
+
+# Device Simulation Configuration
+devices:
+  count: 50          # Number of simulated devices (10-100)
+  prefix: "device"   # Device ID prefix
+  types:
+    - name: "temperature-sensor"
+      weight: 40     # 40% of devices
+    - name: "pressure-sensor"
+      weight: 30     # 30% of devices  
+    - name: "multi-sensor"
+      weight: 30     # 30% of devices
+
+# Simulation Parameters
+simulation:
+  frequency: 0.5      # Message interval per device (seconds)
+  duration: 3600      # Run duration in seconds (1 hour)
+  batchSize: 10       # Messages per batch
+  
+# Metrics Configuration with Trends
+metrics:
+  # Temperature: daily cycle with gradual increase
+  temperature:
+    base: 25.0
+    range: 15.0       # +/- 15 degrees
+    dailyCycle: true  # Warmer during day
+    trend: 0.001      # Gradual increase
+    noise: 0.5
+    unit: "celsius"
+    
+  # Pressure: random walk with mean reversion
+  pressure:
+    base: 1013.25     # Standard atmospheric
+    range: 50.0
+    dailyCycle: false
+    trend: 0.0
+    noise: 2.0
+    unit: "hPa"
+    
+  # Humidity: inverse correlation with temperature
+  humidity:
+    base: 60.0
+    range: 40.0
+    dailyCycle: true
+    trend: -0.0005
+    noise: 3.0
+    unit: "percent"
+    
+  # Voltage: slight decay over time
+  voltage:
+    base: 3.3
+    range: 0.5
+    dailyCycle: false
+    trend: -0.0001
+    noise: 0.02
+    unit: "volts"
+    
+  # Light intensity: strong daily cycle
+  lightIntensity:
+    base: 500.0
+    range: 800.0
+    dailyCycle: true
+    trend: 0.0
+    noise: 50.0
+    unit: "lux"
+    
+  # CO2 levels: inverse daily cycle
+  co2:
+    base: 400.0
+    range: 200.0
+    dailyCycle: true
+    trend: 0.002
+    noise: 10.0
+    unit: "ppm"
+    
+  # Vibration: random spikes
+  vibration:
+    base: 0.5
+    range: 2.0
+    dailyCycle: false
+    trend: 0.0
+    noise: 0.3
+    spikeProb: 0.05
+    unit: "g"
+    
+  # Power consumption: workday pattern
+  powerConsumption:
+    base: 150.0
+    range: 100.0
+    dailyCycle: true
+    trend: 0.001
+    noise: 10.0
+    unit: "watts"
+    
+  # Signal strength: location-based variation
+  signalStrength:
+    base: -70.0
+    range: 30.0
+    dailyCycle: false
+    trend: 0.0
+    noise: 5.0
+    unit: "dBm"
+    
+  # Battery level: slow decay
+  batteryLevel:
+    base: 100.0
+    range: 0.0
+    dailyCycle: false
+    trend: -0.005
+    noise: 0.1
+    unit: "percent"
+
+# Anomaly Generation
+anomalies:
+  enabled: true
+  probability: 0.02    # 2% chance per reading
+  types:
+    - "spike"          # Sudden value jump
+    - "dropout"        # Missing/zero value
+    - "drift"          # Gradual deviation
+    - "stuck"          # Repeating same value
+
+# Warning/Alert thresholds
+thresholds:
+  temperature:
+    warn: 35.0
+    critical: 40.0
+  pressure:
+    warn: 1050.0
+    critical: 1070.0
+  humidity:
+    warn: 85.0
+    critical: 95.0
+  voltage:
+    warn: 2.8
+    critical: 2.5
+  batteryLevel:
+    warn: 20.0
+    critical: 10.0
+
+# Redis Hot Cache Configuration (10 base metrics)
+redis:
+  enabled: true
+  host: "edge-analytics-redis-master.edge.svc.cluster.local"
+  port: 6379
+  password: "redis-secret"
+  ttl: 900            # 15 minutes TTL
+  # 10 base metrics for hot cache
+  hotMetrics:
+    - key: "metrics:latest:{device_id}"
+      description: "Latest reading per device"
+    - key: "metrics:avg:temperature:5m"
+      description: "5-min avg temperature"
+    - key: "metrics:avg:pressure:5m"
+      description: "5-min avg pressure"
+    - key: "metrics:max:temperature:15m"
+      description: "15-min max temperature"
+    - key: "metrics:min:temperature:15m"
+      description: "15-min min temperature"
+    - key: "metrics:count:events:1m"
+      description: "Events per minute"
+    - key: "metrics:active:devices"
+      description: "Active device count"
+    - key: "metrics:warnings:count"
+      description: "Warning count"
+    - key: "metrics:anomalies:count"
+      description: "Anomaly count"
+    - key: "metrics:throughput:msg_per_sec"
+      description: "Message throughput"
 
 resources:
   requests:
-    memory: "64Mi"
-    cpu: "100m"
-  limits:
     memory: "128Mi"
     cpu: "200m"
+  limits:
+    memory: "256Mi"
+    cpu: "500m"
+
+# Deployment mode (for continuous running)
+deployment:
+  enabled: false    # Set to true for continuous mode
+  replicas: 1

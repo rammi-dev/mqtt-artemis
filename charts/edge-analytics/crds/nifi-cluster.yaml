@@ -99,9 +99,9 @@ spec:
           nifi.security.user.authorizer=
           nifi.security.user.login.identity.provider=
           
-      # Init containers to download ClickHouse JDBC driver
+      # Init containers to download ClickHouse JDBC driver and Redis NAR
       initContainers:
-        - name: download-clickhouse-jdbc
+        - name: download-drivers
           image: curlimages/curl:latest
           command:
             - sh
@@ -110,7 +110,17 @@ spec:
               echo "Downloading ClickHouse JDBC driver..."
               curl -L -o /opt/nifi/nifi-current/lib/clickhouse-jdbc.jar \
                 https://github.com/ClickHouse/clickhouse-java/releases/download/v0.6.5/clickhouse-jdbc-0.6.5-all.jar
-              echo "Download complete"
+              
+              echo "Downloading Redis NAR bundle for NiFi 2.0..."
+              # Redis processors are included in nifi-redis-nar
+              curl -L -o /opt/nifi/nifi-current/lib/nifi-redis-nar.nar \
+                https://repo1.maven.org/maven2/org/apache/nifi/nifi-redis-nar/2.0.0/nifi-redis-nar-2.0.0.nar
+              
+              echo "Downloading Redis service NAR..."
+              curl -L -o /opt/nifi/nifi-current/lib/nifi-redis-service-api-nar.nar \
+                https://repo1.maven.org/maven2/org/apache/nifi/nifi-redis-service-api-nar/2.0.0/nifi-redis-service-api-nar-2.0.0.nar
+              
+              echo "All downloads complete"
           volumeMounts:
             - name: extensions-repository
               mountPath: /opt/nifi/nifi-current/lib
@@ -124,3 +134,68 @@ spec:
     sslSecrets:
       tlsSecretName: ""
       create: false
+
+---
+# NiFi Flow Configuration Guide
+# 
+# The producer sends JSON messages with this schema:
+# {
+#   "timestamp": "2025-12-19T10:30:00.000Z",
+#   "device_id": "device-0001",
+#   "device_type": "multi-sensor",
+#   "location": "floor-1-north", 
+#   "status": "OK",
+#   "msg_id": 12345,
+#   "temperature": 25.42,
+#   "pressure": 1013.50,
+#   "humidity": 58.3,
+#   "voltage": 3.28,
+#   "light_intensity": 650.0,
+#   "co2": 412.5,
+#   "vibration": 0.52,
+#   "power_consumption": 142.8,
+#   "signal_strength": -68.5,
+#   "battery_level": 98.2
+# }
+#
+# NiFi Flow Setup:
+#
+# 1. ConsumeMQTT → MergeContent → ConvertRecord → PutDatabaseRecord
+#
+# ConsumeMQTT:
+#   Broker URI: tcp://artemis-activemq-artemis-master-0.artemis-activemq-artemis-master.edge:1883
+#   Topic Filter: raw-telemetry
+#   QoS: 1
+#
+# MergeContent (Batching):
+#   Minimum Entries: 100
+#   Maximum Entries: 500
+#   Max Bin Age: 5 sec
+#   Merge Strategy: Bin-Packing Algorithm
+#   Merge Format: Binary Concatenation
+#
+# ConvertRecord:
+#   Record Reader: JsonTreeReader
+#   Record Writer: JsonRecordSetWriter
+#
+# PutDatabaseRecord (ClickHouse):
+#   JDBC URL: jdbc:clickhouse://clickhouse-telemetry-db.clickhouse:8123/telemetry
+#   Table Name: events
+#   Statement Type: INSERT
+#   Field Mapping:
+#     timestamp → timestamp
+#     device_id → device_id
+#     device_type → device_type
+#     location → location
+#     status → status
+#     msg_id → msg_id
+#     temperature → temperature
+#     pressure → pressure
+#     humidity → humidity
+#     voltage → voltage
+#     light_intensity → light_intensity
+#     co2 → co2
+#     vibration → vibration
+#     power_consumption → power_consumption
+#     signal_strength → signal_strength
+#     battery_level → battery_level

@@ -4,11 +4,149 @@
 
 This edge analytics environment provides a complete data pipeline for collecting, processing, and storing telemetry data from IoT devices using an **umbrella chart** approach with operator-based management.
 
+### Data Flow Diagram
+
+```mermaid
+flowchart LR
+    subgraph Sources
+        IoT[🌡️ IoT Devices]
+    end
+
+    subgraph Ingestion
+        MQTT[📨 Artemis MQTT]
+    end
+
+    subgraph Processing ["Apache NiFi"]
+        Consume[ConsumeMQTT]
+        Eval[EvaluateJsonPath]
+        Merge[MergeContent<br/>batch 100-500]
+        PubRedis[PublishRedis]
+    end
+
+    subgraph Storage
+        CH[(ClickHouse)]
+        Redis[(Redis)]
+    end
+
+    subgraph Orchestration
+        Dagster[⚙️ Dagster]
+    end
+
+    subgraph Serving
+        API[Dashboard API]
+        Grafana[📊 Grafana]
+    end
+
+    subgraph Apps
+        Dashboard[Applications]
+    end
+
+    IoT -->|telemetry| MQTT
+    MQTT --> Consume
+    Consume --> Eval
+    Eval --> Merge
+    Eval --> PubRedis
+    Merge -->|batch insert| CH
+    PubRedis -->|real-time| Redis
+    CH --> Dagster
+    Dagster -->|sync| Redis
+    Redis --> API
+    CH --> Grafana
+    Redis --> Grafana
+    API --> Dashboard
+    Grafana --> Dashboard
 ```
-Source Devices → Artemis MQTT → NiFi → ClickHouse
-                      ↓             ↓        ↓
-                 ArkMQ Op.    NiFiKop Op.  CH Op.
+
+### Component Diagram
+
+```mermaid
+graph TB
+    subgraph Kubernetes ["☸️ Kubernetes Cluster"]
+        subgraph Operators ["Operators Layer"]
+            ArkMQ[ArkMQ Operator]
+            NiFiKop[NiFiKop Operator]
+            CHOp[ClickHouse Operator]
+        end
+
+        subgraph Data ["Data Layer"]
+            Artemis[("Artemis MQTT<br/>:1883")]
+            NiFi["Apache NiFi<br/>:8080"]
+            ClickHouse[("ClickHouse<br/>:8123")]
+            ZK[("Zookeeper<br/>:2181")]
+        end
+
+        subgraph Cache ["Cache Layer"]
+            Redis[("Redis<br/>:6379")]
+        end
+
+        subgraph Orchestration ["Orchestration Layer"]
+            DagsterUI["Dagster UI<br/>:3000"]
+            DagsterDaemon[Dagster Daemon]
+            DagsterPG[("PostgreSQL")]
+        end
+
+        subgraph Monitoring ["Monitoring Layer"]
+            Prometheus["Prometheus<br/>:9090"]
+            Grafana["Grafana<br/>:3000"]
+        end
+
+        subgraph API ["API Layer"]
+            DashAPI["Dashboard API<br/>:8000"]
+        end
+    end
+
+    ArkMQ -.->|manages| Artemis
+    NiFiKop -.->|manages| NiFi
+    CHOp -.->|manages| ClickHouse
+    NiFi --> ZK
+    DagsterUI --> DagsterPG
+    DagsterDaemon --> DagsterPG
+    Prometheus -->|scrapes| NiFi
+    Prometheus -->|scrapes| ClickHouse
+    Prometheus -->|scrapes| Redis
+    Grafana -->|queries| Prometheus
+    Grafana -->|queries| ClickHouse
 ```
+
+### Sequence Diagram - Data Flow
+
+```mermaid
+sequenceDiagram
+    participant IoT as IoT Device
+    participant MQTT as Artemis MQTT
+    participant NiFi as Apache NiFi
+    participant CH as ClickHouse
+    participant Redis as Redis
+    participant Dagster as Dagster
+    participant API as Dashboard API
+    participant App as Application
+
+    IoT->>MQTT: Publish telemetry
+    MQTT->>NiFi: Consume message
+    
+    par Real-time Path
+        NiFi->>Redis: PublishRedis (instant)
+        Redis->>API: Get real-time data
+    and Historical Path
+        NiFi->>NiFi: Batch (100-500 msgs)
+        NiFi->>CH: Bulk INSERT
+    end
+
+    loop Every minute
+        Dagster->>CH: Query aggregations
+        Dagster->>Redis: Update cache
+    end
+
+    App->>API: Request dashboard data
+    API->>Redis: Get cached data
+    Redis-->>API: Return data (<1ms)
+    API-->>App: JSON response
+```
+
+**Three Data Paths**:
+1. **Historical Path** (batched): MQTT → NiFi (batch 100-500) → ClickHouse → Dagster → Redis → API
+2. **Real-time Path** (instant): MQTT → NiFi → Redis (direct) → API
+3. **Orchestration Path**: Dagster schedules → ClickHouse maintenance/aggregations → Redis sync
 
 ### Components (All Operator-Managed)
 
@@ -26,6 +164,9 @@ Source Devices → Artemis MQTT → NiFi → ClickHouse
   - Dataflow lifecycle management via CRDs
   - Graceful scaling and rolling upgrades
   - ClickHouse JDBC driver pre-installed
+  - Redis NAR bundle pre-installed for real-time streaming
+  - **Batched inserts** (100-500 messages) to ClickHouse
+  - **Real-time streaming** to Redis for ultra-fast dashboards
 - **UI Access**: Port 8080
 - **Dependencies**: Zookeeper (Bitnami chart)
 
@@ -41,6 +182,94 @@ Source Devices → Artemis MQTT → NiFi → ClickHouse
 - **Purpose**: Generate test telemetry data
 - **Deployment**: Standalone Helm chart
 - **Output**: Publishes JSON messages to Artemis MQTT
+
+#### 5. **Redis (Dashboard Cache & Real-time Stream)**
+- **Purpose**: High-speed cache AND real-time data streaming for dashboards
+- **Deployment**: Bitnami Redis chart (standalone or HA)
+- **Data Sources**:
+  - **CronJob sync**: Pre-aggregated data from ClickHouse (every minute)
+  - **NiFi direct**: Real-time device state & event stream (instant)
+- **Features**:
+  - Sub-millisecond query response for dashboards
+  - Real-time device state via Hash (`device:{id}`)
+  - Event replay via Stream (`telemetry:stream`)
+  - Pub/Sub for live updates (`telemetry:live`)
+  - Time-to-live (TTL) based data expiration
+  - Memory-optimized with LRU eviction
+- **Access**: Port 6379
+- **Password**: Configurable via `values.yaml`
+
+#### 6. **Dashboard API**
+- **Purpose**: REST API for dashboard frontends
+- **Deployment**: Lightweight FastAPI service
+- **Aggregated Endpoints** (from Dagster sync):
+  - `/api/dashboard/system-health` - Overall system metrics
+  - `/api/dashboard/device-stats` - Per-device statistics
+  - `/api/dashboard/timeseries` - Time-series data (1h)
+  - `/api/dashboard/hourly-stats` - 24-hour aggregation
+  - `/api/dashboard/all` - All data in single request
+- **Real-time Endpoints** (from NiFi stream):
+  - `/api/realtime/devices` - All device current states
+  - `/api/realtime/device/{id}` - Single device state
+  - `/api/realtime/stream` - Recent events from stream
+  - `/api/realtime/stats` - Real-time system stats
+- **Access**: Port 8000
+
+#### 7. **Dagster (Data Orchestration)**
+- **Purpose**: Orchestrate batch jobs, ClickHouse management, and data pipelines
+- **Deployment**: Helm dependency (Dagster v1.7.0)
+- **Features**:
+  - **Scheduled Jobs**: Redis sync (every minute), maintenance (daily), aggregations
+  - **Sensors**: High-volume detection, data freshness monitoring
+  - **Asset Tracking**: Full lineage and observability for all data assets
+  - **ClickHouse Management**: Table optimization, partition cleanup, TTL enforcement
+  - **Data Quality**: Automated anomaly detection and quality metrics
+- **UI Access**: Port 3000 (webserver)
+- **Replaces**: Simple CronJobs with full orchestration platform
+
+**Dagster Jobs**:
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| `redis_sync_job` | Every minute | Sync ClickHouse → Redis |
+| `hourly_aggregation_job` | Hourly | Verify materialized views |
+| `daily_aggregation_job` | Daily 1 AM | Device summaries |
+| `clickhouse_maintenance_job` | Daily 3 AM | Optimize & cleanup |
+| `data_quality_job` | Hourly | Quality monitoring |
+
+#### 8. **Prometheus (Metrics Collection)**
+- **Purpose**: Collect and store metrics from all components
+- **Deployment**: Helm dependency (Prometheus v25.27.0)
+- **Features**:
+  - Scrapes metrics from ClickHouse, NiFi, Redis, Dagster
+  - 7-day retention by default
+  - Node exporter for system metrics
+- **Access**: Port 9090
+- **Scrape Targets**:
+  - `clickhouse:9363` - ClickHouse metrics
+  - `edge-nifi:9092` - NiFi metrics
+  - `redis:9121` - Redis exporter
+  - `dagster-webserver:80` - Dagster metrics
+
+#### 9. **Grafana (Monitoring Dashboards)**
+- **Purpose**: Visualization and monitoring dashboards
+- **Deployment**: Helm dependency (Grafana v8.5.0)
+- **Features**:
+  - Pre-configured data sources (Prometheus, ClickHouse, Redis)
+  - Pre-built dashboards for edge analytics
+  - Alerting and notification support
+- **Access**: Port 3000
+- **Credentials**: admin / admin-secret (configurable)
+- **Pre-installed Plugins**:
+  - `grafana-clickhouse-datasource`
+  - `redis-datasource`
+  - `grafana-piechart-panel`
+
+**Pre-built Dashboards**:
+| Dashboard | Description |
+|-----------|-------------|
+| Edge Analytics Overview | System health, events/min, device status |
+| ClickHouse Metrics | Insert rate, query performance, storage |
+| Pipeline Health | NiFi queues, Redis memory, Dagster runs |
 
 ## Deployment
 

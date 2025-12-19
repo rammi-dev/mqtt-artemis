@@ -1,16 +1,20 @@
-apiVersion: batch/v1
-kind: Job
+{{- if .Values.deployment.enabled }}
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ include "producer.fullname" . }}-job
+  name: {{ include "producer.fullname" . }}
   labels:
     {{- include "producer.labels" . | nindent 4 }}
 spec:
+  replicas: {{ .Values.deployment.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "producer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "producer.labels" . | nindent 8 }}
+        {{- include "producer.selectorLabels" . | nindent 8 }}
     spec:
-      restartPolicy: OnFailure
       containers:
       - name: producer
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -35,7 +39,7 @@ spec:
         - name: SIM_FREQUENCY
           value: {{ .Values.simulation.frequency | quote }}
         - name: SIM_DURATION
-          value: {{ .Values.simulation.duration | quote }}
+          value: "0"  # Run forever in deployment mode
         - name: SIM_BATCH_SIZE
           value: {{ .Values.simulation.batchSize | quote }}
         - name: ANOMALY_ENABLED
@@ -49,7 +53,10 @@ spec:
         - name: REDIS_PORT
           value: {{ .Values.redis.port | quote }}
         - name: REDIS_PASSWORD
-          value: {{ .Values.redis.password | quote }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "producer.fullname" . }}-secrets
+              key: redis-password
         - name: REDIS_TTL
           value: {{ .Values.redis.ttl | quote }}
         resources:
@@ -57,7 +64,24 @@ spec:
         volumeMounts:
         - name: script-volume
           mountPath: /app
+        livenessProbe:
+          exec:
+            command:
+            - pgrep
+            - -f
+            - python3
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - pgrep
+            - -f
+            - python3
+          initialDelaySeconds: 10
+          periodSeconds: 10
       volumes:
       - name: script-volume
         configMap:
           name: {{ include "producer.fullname" . }}-script
+{{- end }}

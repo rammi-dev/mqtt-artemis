@@ -39,3 +39,208 @@ nifikop:
     - nifi
   # NiFiKop operator will be installed
   # You only need to create NifiCluster CRD separately
+
+# Redis for dashboard caching and real-time aggregations
+redis:
+  enabled: true
+  architecture: standalone  # Use 'replication' for HA
+  auth:
+    enabled: true
+    password: "redis-secret"
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 250m
+
+# Dagster for data orchestration and batch processing
+dagster:
+  enabled: true
+  
+  # Dagster webserver (UI)
+  dagsterWebserver:
+    replicaCount: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+  
+  # Dagster daemon (schedules, sensors, run queue)
+  dagsterDaemon:
+    enabled: true
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+  
+  # Run launcher configuration
+  runLauncher:
+    type: K8sRunLauncher
+    config:
+      k8sRunLauncher:
+        envConfigMaps:
+          - name: dagster-env
+        envSecrets:
+          - name: dagster-secrets
+  
+  # PostgreSQL for Dagster (run storage, event log, schedule storage)
+  postgresql:
+    enabled: true
+    auth:
+      password: "dagster-postgres"
+    primary:
+      persistence:
+        size: 5Gi
+      resources:
+        requests:
+          memory: 256Mi
+          cpu: 100m
+        limits:
+          memory: 512Mi
+          cpu: 500m
+  
+  # User code deployments (our custom pipelines)
+  dagster-user-deployments:
+    enabled: true
+    deployments:
+      - name: edge-analytics-pipelines
+        image:
+          repository: edge-analytics/dagster-pipelines
+          tag: latest
+          pullPolicy: Always
+        dagsterApiGrpcArgs:
+          - "--module-name"
+          - "pipelines"
+        port: 3030
+        resources:
+          requests:
+            memory: 256Mi
+            cpu: 100m
+          limits:
+            memory: 1Gi
+            cpu: 500m
+        env:
+          CLICKHOUSE_HOST: clickhouse-telemetry-db.clickhouse.svc.cluster.local
+          CLICKHOUSE_PORT: "8123"
+          CLICKHOUSE_USER: admin
+          CLICKHOUSE_PASSWORD: password
+          REDIS_HOST: edge-analytics-redis-master.edge.svc.cluster.local
+          REDIS_PORT: "6379"
+          REDIS_PASSWORD: redis-secret
+  # Redis configuration for time-series caching
+  commonConfiguration: |-
+    maxmemory 200mb
+    maxmemory-policy allkeys-lru
+    appendonly yes
+
+# Prometheus for metrics collection
+prometheus:
+  enabled: true
+  alertmanager:
+    enabled: false  # Enable for production alerting
+  prometheus-pushgateway:
+    enabled: false
+  prometheus-node-exporter:
+    enabled: true
+  server:
+    persistentVolume:
+      size: 10Gi
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+    retention: "7d"
+  # Scrape configs for edge-analytics components
+  serverFiles:
+    prometheus.yml:
+      scrape_configs:
+        - job_name: 'prometheus'
+          static_configs:
+            - targets: ['localhost:9090']
+        - job_name: 'clickhouse'
+          static_configs:
+            - targets: ['clickhouse-telemetry-db:9363']
+        - job_name: 'nifi'
+          static_configs:
+            - targets: ['edge-nifi:9092']
+        - job_name: 'redis'
+          static_configs:
+            - targets: ['edge-analytics-redis-master:9121']
+        - job_name: 'dagster'
+          static_configs:
+            - targets: ['edge-analytics-dagster-webserver:80']
+
+# Grafana for monitoring dashboards
+grafana:
+  enabled: true
+  adminUser: admin
+  adminPassword: admin-secret
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+  # Data sources configuration
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://edge-analytics-prometheus-server:80
+          access: proxy
+          isDefault: true
+        - name: ClickHouse
+          type: grafana-clickhouse-datasource
+          url: http://clickhouse-telemetry-db:8123
+          access: proxy
+          jsonData:
+            defaultDatabase: telemetry
+          secureJsonData:
+            password: password
+        - name: Redis
+          type: redis-datasource
+          url: redis://edge-analytics-redis-master:6379
+          access: proxy
+          secureJsonData:
+            password: redis-secret
+  # Install required plugins
+  plugins:
+    - grafana-clickhouse-datasource
+    - redis-datasource
+    - grafana-piechart-panel
+  # Pre-configured dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'edge-analytics'
+          orgId: 1
+          folder: 'Edge Analytics'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/edge-analytics
+  dashboardsConfigMaps:
+    edge-analytics: "grafana-dashboards"
