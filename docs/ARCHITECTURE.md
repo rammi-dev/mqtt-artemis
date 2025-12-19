@@ -8,38 +8,56 @@ This edge analytics environment provides a complete data pipeline for collecting
 
 ```mermaid
 flowchart LR
-    subgraph Sources
-        IoT[🌡️ IoT Devices]
+    subgraph Cloud ["☁️ GCP"]
+        subgraph GKE ["GKE Cluster (Zonal)"]
+            subgraph Sources
+                IoT[🌡️ IoT Devices]
+            end
+
+            subgraph Ingestion
+                MQTT[📨 Artemis MQTT]
+            end
+
+            subgraph Processing ["Apache NiFi"]
+                Consume[ConsumeMQTT]
+                Eval[EvaluateJsonPath]
+                Merge[MergeContent<br/>batch 100-500]
+                PubRedis[PublishRedis]
+            end
+
+            subgraph Storage
+                CH[(ClickHouse)]
+                Redis[(Redis)]
+            end
+
+            subgraph Orchestration
+                Dagster[⚙️ Dagster]
+            end
+
+            subgraph Serving
+                API[Dashboard API]
+                Grafana[📊 Grafana]
+            end
+
+            subgraph Apps
+                Dashboard[Flutter App]
+            end
+        end
+        
+        subgraph Infra ["Infrastructure"]
+            TF[Terraform]
+            CM[cert-manager]
+            LE[Let's Encrypt]
+            Ingress[NGINX Ingress]
+            NipIO[nip.io DNS]
+        end
     end
 
-    subgraph Ingestion
-        MQTT[📨 Artemis MQTT]
-    end
-
-    subgraph Processing ["Apache NiFi"]
-        Consume[ConsumeMQTT]
-        Eval[EvaluateJsonPath]
-        Merge[MergeContent<br/>batch 100-500]
-        PubRedis[PublishRedis]
-    end
-
-    subgraph Storage
-        CH[(ClickHouse)]
-        Redis[(Redis)]
-    end
-
-    subgraph Orchestration
-        Dagster[⚙️ Dagster]
-    end
-
-    subgraph Serving
-        API[Dashboard API]
-        Grafana[📊 Grafana]
-    end
-
-    subgraph Apps
-        Dashboard[Applications]
-    end
+    TF -->|provisions| GKE
+    CM -->|manages| LE
+    Ingress -->|routes| API
+    Ingress -->|routes| Grafana
+    NipIO -->|resolves| Ingress
 
     IoT -->|telemetry| MQTT
     MQTT --> Consume
@@ -93,9 +111,23 @@ graph TB
         subgraph API ["API Layer"]
             DashAPI["Dashboard API<br/>:8000"]
         end
+
+        subgraph Apps ["Applications Layer"]
+            Flutter["Flutter Dashboard<br/>Mobile/Web"]
+        end
+
+        subgraph Ingress ["Ingress Layer"]
+            NGINX["NGINX Ingress<br/>nip.io"]
+            CertMgr["cert-manager<br/>Let's Encrypt"]
+        end
     end
 
     ArkMQ -.->|manages| Artemis
+    DashAPI -->|serves| Flutter
+    Flutter -->|queries| DashAPI
+    NGINX -->|routes to| DashAPI
+    NGINX -->|routes to| Grafana
+    CertMgr -->|TLS certs| NGINX
     NiFiKop -.->|manages| NiFi
     CHOp -.->|manages| ClickHouse
     NiFi --> ZK
@@ -138,8 +170,10 @@ sequenceDiagram
     end
 
     App->>API: Request dashboard data
-    API->>Redis: Get cached data
+    API->>Redis: Get cached data (3 metrics)
     Redis-->>API: Return data (<1ms)
+    API->>CH: Query historical data (2 metrics)
+    CH-->>API: Return timeseries
     API-->>App: JSON response
 ```
 
@@ -200,19 +234,23 @@ sequenceDiagram
 - **Password**: Configurable via `values.yaml`
 
 #### 6. **Dashboard API**
-- **Purpose**: REST API for dashboard frontends
-- **Deployment**: Lightweight FastAPI service
-- **Aggregated Endpoints** (from Dagster sync):
-  - `/api/dashboard/system-health` - Overall system metrics
-  - `/api/dashboard/device-stats` - Per-device statistics
-  - `/api/dashboard/timeseries` - Time-series data (1h)
-  - `/api/dashboard/hourly-stats` - 24-hour aggregation
-  - `/api/dashboard/all` - All data in single request
-- **Real-time Endpoints** (from NiFi stream):
+- **Purpose**: REST API for dashboard frontends (Flutter, web apps)
+- **Deployment**: FastAPI service with Redis + ClickHouse drivers
+- **Redis Endpoints** (hot cache, <1ms response):
+  - `/api/dashboard/redis-metrics` - 3 hot metrics (avg temp, pressure, throughput)
   - `/api/realtime/devices` - All device current states
   - `/api/realtime/device/{id}` - Single device state
   - `/api/realtime/stream` - Recent events from stream
   - `/api/realtime/stats` - Real-time system stats
+- **ClickHouse Endpoints** (historical queries):
+  - `/api/dashboard/clickhouse/temperature-timeseries` - Last 60 min temperature data
+  - `/api/dashboard/clickhouse/hourly-stats` - 24-hour event aggregation
+  - `/api/dashboard/clickhouse/device-stats` - Device statistics table
+- **Aggregated Endpoints** (from Dagster sync):
+  - `/api/dashboard/system-health` - Overall system metrics
+  - `/api/dashboard/device-stats` - Per-device statistics
+  - `/api/dashboard/timeseries` - Time-series data (1h)
+  - `/api/dashboard/all` - All data in single request
 - **Access**: Port 8000
 
 #### 7. **Dagster (Data Orchestration)**
@@ -265,11 +303,117 @@ sequenceDiagram
   - `grafana-piechart-panel`
 
 **Pre-built Dashboards**:
-| Dashboard | Description |
-|-----------|-------------|
-| Edge Analytics Overview | System health, events/min, device status |
-| ClickHouse Metrics | Insert rate, query performance, storage |
-| Pipeline Health | NiFi queues, Redis memory, Dagster runs |
+| Dashboard | Description | Datasource |
+|-----------|-------------|------------|
+| Edge Analytics Overview | System health, events/min, device status | Prometheus |
+| ClickHouse Metrics | Insert rate, query performance, storage | Prometheus + ClickHouse |
+| Pipeline Health | NiFi queues, Redis memory, Dagster runs | Prometheus + ClickHouse |
+| Device Analytics | Per-device metrics, battery, CPU, location | ClickHouse |
+| Data Quality & Anomalies | Warning rate, anomalies, stale devices | ClickHouse |
+
+#### 10. **Flutter Dashboard App**
+- **Purpose**: Cross-platform dashboard for mobile and web
+- **Location**: `/apps/flutter-dashboard/`
+- **Features**:
+  - **Redis Metrics** (3 cards, auto-refresh 10s):
+    - Average Temperature
+    - Average Pressure  
+    - Throughput (events/sec)
+  - **ClickHouse Charts** (2 visualizations):
+    - Temperature Timeseries (60 min line chart)
+    - Hourly Events (24h bar chart)
+  - Device Statistics Table
+  - Dark theme with Material Design 3
+- **Dependencies**: fl_chart, provider, http
+- **Build Commands**:
+  ```bash
+  cd apps/flutter-dashboard
+  flutter pub get
+  flutter run -d chrome    # Web
+  flutter run -d android   # Mobile
+  ```
+- **API Configuration**: Set `API_BASE_URL` in `lib/services/metrics_service.dart`
+
+## Infrastructure (Terraform)
+
+### GKE Cluster (Cheapest Configuration)
+
+The infrastructure is provisioned via Terraform in `/terraform/gke/`:
+
+```
+terraform/gke/
+├── main.tf              # GKE cluster + node pool
+├── variables.tf         # Configuration variables
+├── cert-manager.tf      # cert-manager + Let's Encrypt
+├── ingress-nginx.tf     # NGINX Ingress + nip.io
+├── terraform.tfvars.example
+└── README.md
+```
+
+**Cost Optimization Features**:
+| Feature | Savings |
+|---------|---------|
+| Zonal cluster (vs Regional) | ~66% on control plane |
+| Spot VMs (vs Standard) | 60-91% on compute |
+| e2-medium (vs n2-standard) | ~50% on compute |
+| pd-standard (vs pd-ssd) | ~80% on storage |
+| Standard network tier | ~25% on egress |
+
+**Estimated Monthly Cost**: ~$12-40/month (1-3 nodes)
+
+### Infrastructure Components
+
+#### 11. **NGINX Ingress Controller**
+- **Purpose**: Route external traffic to services
+- **Deployment**: Helm chart via Terraform
+- **Features**:
+  - Static IP for consistent access
+  - TLS termination
+  - Rate limiting and CORS
+- **Integration**: Works with nip.io for wildcard DNS
+
+#### 12. **cert-manager + Let's Encrypt**
+- **Purpose**: Automatic TLS certificate management
+- **Deployment**: Helm chart via Terraform
+- **ClusterIssuers**:
+  - `letsencrypt-prod` - Production certificates
+  - `letsencrypt-staging` - Testing (no rate limits)
+  - `selfsigned-issuer` - Internal services / nip.io
+
+#### 13. **nip.io (Wildcard DNS)**
+- **Purpose**: DNS without configuration
+- **How it works**: `app.1.2.3.4.nip.io` resolves to `1.2.3.4`
+- **Service URLs**:
+  - `https://grafana.<IP>.nip.io`
+  - `https://nifi.<IP>.nip.io`
+  - `https://dagster.<IP>.nip.io`
+  - `https://api.<IP>.nip.io`
+
+### Terraform Quick Start
+
+```bash
+# 1. Navigate to terraform directory
+cd terraform/gke
+
+# 2. Configure variables
+cp terraform.tfvars.example terraform.tfvars
+vim terraform.tfvars  # Set project_id, email
+
+# 3. Initialize and apply
+terraform init
+terraform plan
+terraform apply
+
+# 4. Configure kubectl
+$(terraform output -raw kubeconfig_command)
+
+# 5. Deploy applications
+cd ../../
+./scripts/deploy.sh all
+
+# 6. Get service URLs
+terraform output service_urls
+```
 
 ## Deployment
 
@@ -334,9 +478,34 @@ edge-analytics/
 ├── values.yaml         # Configuration for all dependencies
 ├── README.md
 ├── ARTEMIS_OPTIONS.md
-└── crds/               # Only 2 files you maintain
+└── crds/               # Custom resources you maintain
     ├── nifi-cluster.yaml       # Your NiFi configuration
-    └── clickhouse-cluster.yaml # Your ClickHouse configuration
+    ├── clickhouse-cluster.yaml # Your ClickHouse configuration
+    ├── dashboard-api.yaml      # Dashboard API (FastAPI)
+    └── grafana-dashboards.yaml # Pre-built Grafana dashboards (5)
+```
+
+### Flutter Dashboard (apps/flutter-dashboard/)
+
+```
+flutter-dashboard/
+├── pubspec.yaml            # Dependencies (fl_chart, provider, http)
+├── lib/
+│   ├── main.dart           # App entry point
+│   ├── models/
+│   │   └── metrics.dart    # Data models
+│   ├── services/
+│   │   └── metrics_service.dart  # API client
+│   ├── providers/
+│   │   └── metrics_provider.dart # State management
+│   ├── screens/
+│   │   └── dashboard_screen.dart # Main UI
+│   └── widgets/
+│       ├── metric_card.dart      # Redis metric cards
+│       ├── temperature_chart.dart # ClickHouse line chart
+│       ├── events_chart.dart     # ClickHouse bar chart
+│       └── device_table.dart     # Device statistics
+└── README.md
 ```
 
 **Dependencies in Chart.yaml:**
@@ -347,9 +516,15 @@ edge-analytics/
 
 ### What You Maintain
 
-**Only 2 CRD files:**
-1. `charts/edge-analytics/crds/nifi-cluster.yaml` - NiFi cluster spec
-2. `charts/edge-analytics/crds/clickhouse-cluster.yaml` - ClickHouse cluster spec
+**CRD Files in `charts/edge-analytics/crds/`:**
+1. `nifi-cluster.yaml` - NiFi cluster spec
+2. `clickhouse-cluster.yaml` - ClickHouse cluster spec  
+3. `dashboard-api.yaml` - Dashboard API deployment
+4. `grafana-dashboards.yaml` - 5 pre-built dashboards
+
+**Flutter App in `apps/flutter-dashboard/`:**
+- Cross-platform dashboard (mobile/web)
+- Reads 3 metrics from Redis, 2 from ClickHouse
 
 **Everything else is Helm dependencies** - downloaded automatically, no template maintenance!
 

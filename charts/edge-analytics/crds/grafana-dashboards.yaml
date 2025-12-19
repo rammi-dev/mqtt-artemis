@@ -621,3 +621,319 @@ data:
       "title": "Pipeline Health",
       "uid": "pipeline-health"
     }
+
+  # ClickHouse Dashboard 1: Device Analytics
+  device-analytics.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+          "id": 1,
+          "title": "Total Devices",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT uniq(device_id) as devices FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR"}
+          ],
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+          "id": 2,
+          "title": "Total Events (24h)",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT formatReadableQuantity(count()) as events FROM telemetry.events WHERE timestamp >= now() - INTERVAL 24 HOUR"}
+          ],
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+          "id": 3,
+          "title": "Avg Temperature",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT round(avg(temperature), 1) as avg_temp FROM telemetry.events WHERE timestamp >= now() - INTERVAL 15 MINUTE"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "celsius", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}, {"color": "green", "value": 20}, {"color": "yellow", "value": 60}, {"color": "red", "value": 80}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+          "id": 4,
+          "title": "Avg Pressure",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT round(avg(pressure), 1) as avg_pressure FROM telemetry.events WHERE timestamp >= now() - INTERVAL 15 MINUTE"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "pressurehpa", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}, {"color": "green", "value": 1000}, {"color": "yellow", "value": 1030}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+          "id": 5,
+          "title": "Avg Humidity",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT round(avg(humidity), 1) as avg_humidity FROM telemetry.events WHERE timestamp >= now() - INTERVAL 15 MINUTE"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "yellow", "value": null}, {"color": "green", "value": 30}, {"color": "blue", "value": 70}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+          "id": 6,
+          "title": "Events/sec",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT round(count() / 60, 2) as eps FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 MINUTE"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 10}, {"color": "green", "value": 50}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "id": 7,
+          "title": "Temperature by Device (Last Hour)",
+          "type": "timeseries",
+          "targets": [
+            {"rawSql": "SELECT toStartOfMinute(timestamp) as time, device_id, avg(temperature) as temperature FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY time, device_id ORDER BY time"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "celsius", "custom": {"lineWidth": 2, "fillOpacity": 10}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "id": 8,
+          "title": "Pressure by Device (Last Hour)",
+          "type": "timeseries",
+          "targets": [
+            {"rawSql": "SELECT toStartOfMinute(timestamp) as time, device_id, avg(pressure) as pressure FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY time, device_id ORDER BY time"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "pressurehpa", "custom": {"lineWidth": 2, "fillOpacity": 10}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12},
+          "id": 9,
+          "title": "Device Event Distribution",
+          "type": "piechart",
+          "targets": [
+            {"rawSql": "SELECT device_id, count() as events FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY device_id ORDER BY events DESC LIMIT 10"}
+          ],
+          "options": {"legend": {"displayMode": "table", "placement": "right"}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 12},
+          "id": 10,
+          "title": "Device Status Overview",
+          "type": "bargauge",
+          "targets": [
+            {"rawSql": "SELECT device_id, round(avg(battery_level), 1) as battery FROM telemetry.events WHERE timestamp >= now() - INTERVAL 15 MINUTE GROUP BY device_id ORDER BY battery"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 20}, {"color": "green", "value": 50}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 12},
+          "id": 11,
+          "title": "CPU Usage by Device",
+          "type": "gauge",
+          "targets": [
+            {"rawSql": "SELECT device_id, round(avg(cpu_usage), 1) as cpu FROM telemetry.events WHERE timestamp >= now() - INTERVAL 5 MINUTE GROUP BY device_id ORDER BY cpu DESC LIMIT 8"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+          "id": 12,
+          "title": "Device Statistics Table",
+          "type": "table",
+          "targets": [
+            {"rawSql": "SELECT device_id, location, count() as events, round(avg(temperature), 1) as avg_temp, round(avg(pressure), 1) as avg_pressure, round(avg(humidity), 1) as avg_humidity, round(avg(battery_level), 1) as battery, max(timestamp) as last_seen FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY device_id, location ORDER BY events DESC"}
+          ],
+          "fieldConfig": {"overrides": [{"matcher": {"id": "byName", "options": "battery"}, "properties": [{"id": "unit", "value": "percent"}]}, {"matcher": {"id": "byName", "options": "avg_temp"}, "properties": [{"id": "unit", "value": "celsius"}]}]}
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["clickhouse", "devices", "iot"],
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "Device Analytics (ClickHouse)",
+      "uid": "device-analytics-ch"
+    }
+
+  # ClickHouse Dashboard 2: Data Quality & Anomalies
+  data-quality.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+          "id": 1,
+          "title": "Data Freshness",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT dateDiff('second', max(timestamp), now()) as seconds_since_last FROM telemetry.events"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+          "id": 2,
+          "title": "Warning Rate",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT round(countIf(status = 'WARN') * 100.0 / count(), 2) as warning_pct FROM telemetry.events WHERE timestamp >= now() - INTERVAL 15 MINUTE"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 15}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+          "id": 3,
+          "title": "Error Rate",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT round(countIf(status = 'ERROR') * 100.0 / count(), 2) as error_pct FROM telemetry.events WHERE timestamp >= now() - INTERVAL 15 MINUTE"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+          "id": 4,
+          "title": "Anomaly Count (1h)",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT count() as anomalies FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR AND (temperature > 80 OR temperature < 10 OR pressure > 1050 OR pressure < 950 OR humidity > 95)"}
+          ],
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 10}, {"color": "red", "value": 50}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+          "id": 5,
+          "title": "Low Battery Devices",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "SELECT uniq(device_id) as low_battery_devices FROM telemetry.events WHERE timestamp >= now() - INTERVAL 15 MINUTE AND battery_level < 20"}
+          ],
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+          "id": 6,
+          "title": "Stale Devices",
+          "type": "stat",
+          "targets": [
+            {"rawSql": "WITH active AS (SELECT uniq(device_id) as cnt FROM telemetry.events WHERE timestamp >= now() - INTERVAL 5 MINUTE), total AS (SELECT uniq(device_id) as cnt FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR) SELECT total.cnt - active.cnt as stale_devices FROM active, total"}
+          ],
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 2}, {"color": "red", "value": 5}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "id": 7,
+          "title": "Events by Status Over Time",
+          "type": "timeseries",
+          "targets": [
+            {"rawSql": "SELECT toStartOfMinute(timestamp) as time, status, count() as count FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY time, status ORDER BY time"}
+          ],
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 30, "stacking": {"mode": "normal"}}}, "overrides": [{"matcher": {"id": "byName", "options": "OK"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "WARN"}, "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "ERROR"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}]}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "id": 8,
+          "title": "Temperature Anomalies Timeline",
+          "type": "timeseries",
+          "targets": [
+            {"rawSql": "SELECT toStartOfMinute(timestamp) as time, device_id, temperature FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR AND (temperature > 80 OR temperature < 10) ORDER BY time"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "celsius", "custom": {"drawStyle": "points", "pointSize": 8}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12},
+          "id": 9,
+          "title": "Status Distribution",
+          "type": "piechart",
+          "targets": [
+            {"rawSql": "SELECT status, count() as count FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY status"}
+          ],
+          "fieldConfig": {"overrides": [{"matcher": {"id": "byName", "options": "OK"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "WARN"}, "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "ERROR"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}]},
+          "options": {"legend": {"displayMode": "table", "placement": "right", "values": ["percent", "value"]}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 12},
+          "id": 10,
+          "title": "Warning Events by Device",
+          "type": "bargauge",
+          "targets": [
+            {"rawSql": "SELECT device_id, count() as warnings FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR AND status = 'WARN' GROUP BY device_id ORDER BY warnings DESC LIMIT 10"}
+          ],
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 20}]}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 12},
+          "id": 11,
+          "title": "Hourly Event Trend (24h)",
+          "type": "barchart",
+          "targets": [
+            {"rawSql": "SELECT toStartOfHour(timestamp) as hour, count() as events, countIf(status = 'WARN') as warnings, countIf(status = 'ERROR') as errors FROM telemetry.events WHERE timestamp >= now() - INTERVAL 24 HOUR GROUP BY hour ORDER BY hour"}
+          ],
+          "fieldConfig": {"defaults": {"custom": {"stacking": {"mode": "normal"}}}}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 10, "w": 12, "x": 0, "y": 20},
+          "id": 12,
+          "title": "Recent Anomalies",
+          "type": "table",
+          "targets": [
+            {"rawSql": "SELECT timestamp, device_id, location, temperature, pressure, humidity, battery_level, status, CASE WHEN temperature > 80 THEN 'High Temp' WHEN temperature < 10 THEN 'Low Temp' WHEN pressure > 1050 THEN 'High Pressure' WHEN pressure < 950 THEN 'Low Pressure' WHEN humidity > 95 THEN 'High Humidity' WHEN battery_level < 20 THEN 'Low Battery' ELSE 'Unknown' END as anomaly_type FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR AND (temperature > 80 OR temperature < 10 OR pressure > 1050 OR pressure < 950 OR humidity > 95 OR battery_level < 20) ORDER BY timestamp DESC LIMIT 50"}
+          ],
+          "fieldConfig": {"overrides": [{"matcher": {"id": "byName", "options": "temperature"}, "properties": [{"id": "unit", "value": "celsius"}]}, {"matcher": {"id": "byName", "options": "humidity"}, "properties": [{"id": "unit", "value": "percent"}]}, {"matcher": {"id": "byName", "options": "battery_level"}, "properties": [{"id": "unit", "value": "percent"}]}]}
+        },
+        {
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "gridPos": {"h": 10, "w": 12, "x": 12, "y": 20},
+          "id": 13,
+          "title": "Data Quality Metrics by Location",
+          "type": "table",
+          "targets": [
+            {"rawSql": "SELECT location, count() as total_events, countIf(status = 'OK') as ok_events, countIf(status = 'WARN') as warnings, countIf(status = 'ERROR') as errors, round(countIf(status = 'OK') * 100.0 / count(), 1) as ok_rate, round(avg(temperature), 1) as avg_temp, round(stddevPop(temperature), 2) as temp_stddev, uniq(device_id) as devices FROM telemetry.events WHERE timestamp >= now() - INTERVAL 1 HOUR GROUP BY location ORDER BY total_events DESC"}
+          ],
+          "fieldConfig": {"overrides": [{"matcher": {"id": "byName", "options": "ok_rate"}, "properties": [{"id": "unit", "value": "percent"}]}, {"matcher": {"id": "byName", "options": "avg_temp"}, "properties": [{"id": "unit", "value": "celsius"}]}]}
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["clickhouse", "quality", "anomalies"],
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "Data Quality & Anomalies (ClickHouse)",
+      "uid": "data-quality-ch"
+    }

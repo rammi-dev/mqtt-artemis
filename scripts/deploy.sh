@@ -27,6 +27,7 @@ NC='\033[0m'
 
 # Component order (dependency chain)
 COMPONENTS=(
+    "terraform"
     "namespace"
     "cert-manager"
     "helm-deps"
@@ -40,7 +41,10 @@ COMPONENTS=(
     "grafana"
     "dashboard-api"
     "producer"
+    "flutter-dashboard"
 )
+
+TERRAFORM_DIR="$PROJECT_ROOT/terraform/gke"
 
 # ============================================================================
 # Helper Functions
@@ -90,6 +94,62 @@ check_dependency() {
 # ============================================================================
 # Component Deployment Functions
 # ============================================================================
+
+deploy_terraform() {
+    log_header "Provisioning GKE Cluster via Terraform"
+    
+    if [ ! -d "$TERRAFORM_DIR" ]; then
+        log_error "Terraform directory not found: $TERRAFORM_DIR"
+        exit 1
+    fi
+    
+    # Check for terraform
+    if ! command -v terraform &> /dev/null; then
+        log_error "Terraform is required but not installed."
+        log_info "Install: https://developer.hashicorp.com/terraform/downloads"
+        exit 1
+    fi
+    
+    cd "$TERRAFORM_DIR"
+    
+    # Check for tfvars
+    if [ ! -f "terraform.tfvars" ]; then
+        if [ -f "terraform.tfvars.example" ]; then
+            log_warn "terraform.tfvars not found. Creating from example..."
+            cp terraform.tfvars.example terraform.tfvars
+            log_info "Please edit $TERRAFORM_DIR/terraform.tfvars with your settings"
+            log_info "Required: project_id, letsencrypt_email"
+            read -p "Press Enter after editing terraform.tfvars..."
+        else
+            log_error "No terraform.tfvars or example found"
+            exit 1
+        fi
+    fi
+    
+    log_info "Initializing Terraform..."
+    terraform init
+    
+    log_info "Planning infrastructure..."
+    terraform plan -out=tfplan
+    
+    read -p "Apply this plan? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Applying Terraform..."
+        terraform apply tfplan
+        
+        log_info "Configuring kubectl..."
+        eval "$(terraform output -raw kubeconfig_command)"
+        
+        log_success "GKE cluster provisioned"
+        log_info "Ingress IP: $(terraform output -raw ingress_ip)"
+        log_info "nip.io domain: $(terraform output -raw nip_io_domain)"
+    else
+        log_warn "Terraform apply cancelled"
+    fi
+    
+    cd "$PROJECT_ROOT"
+}
 
 deploy_namespace() {
     log_header "Creating Namespace: $NAMESPACE"
@@ -351,7 +411,7 @@ deploy_grafana() {
     fi
     
     log_success "Grafana deployed"
-    log_info "Dashboards: Edge Analytics Overview, ClickHouse Metrics, Pipeline Health"
+    log_info "Dashboards: Edge Analytics Overview, ClickHouse Metrics, Pipeline Health, Device Analytics, Data Quality"
     log_info "Datasources: Prometheus, ClickHouse, Redis"
 }
 
@@ -365,9 +425,36 @@ deploy_dashboard_api() {
         wait_for_pods "$NAMESPACE" "app=dashboard-api" 120
         
         log_success "Dashboard API deployed"
-        log_info "Endpoints: /api/dashboard/system-health, /api/dashboard/device-stats, etc."
+        log_info "Redis endpoints: /api/dashboard/redis-metrics (3 hot metrics)"
+        log_info "ClickHouse endpoints: /api/dashboard/clickhouse/temperature-timeseries, /hourly-stats, /device-stats"
     else
         log_warn "Dashboard API manifest not found, skipping"
+    fi
+}
+
+deploy_flutter_dashboard() {
+    log_header "Building Flutter Dashboard"
+    
+    FLUTTER_DIR="$PROJECT_ROOT/apps/flutter-dashboard"
+    
+    if [ -d "$FLUTTER_DIR" ]; then
+        if command -v flutter &> /dev/null; then
+            log_info "Building Flutter web app..."
+            cd "$FLUTTER_DIR"
+            flutter pub get
+            flutter build web --release
+            cd "$PROJECT_ROOT"
+            
+            log_success "Flutter dashboard built"
+            log_info "Output: $FLUTTER_DIR/build/web/"
+            log_info "Metrics: 3 from Redis (hot cache), 2 from ClickHouse (historical)"
+        else
+            log_warn "Flutter SDK not found, skipping build"
+            log_info "Install Flutter: https://flutter.dev/docs/get-started/install"
+            log_info "Then run: cd $FLUTTER_DIR && flutter build web"
+        fi
+    else
+        log_warn "Flutter dashboard not found at $FLUTTER_DIR"
     fi
 }
 
@@ -433,6 +520,7 @@ deploy_component() {
     local component=$1
     
     case $component in
+        terraform)       deploy_terraform ;;
         namespace)       deploy_namespace ;;
         cert-manager)    deploy_cert_manager ;;
         helm-deps)       deploy_helm_deps ;;
@@ -446,6 +534,7 @@ deploy_component() {
         grafana)         deploy_grafana ;;
         dashboard-api)   deploy_dashboard_api ;;
         producer)        deploy_producer ;;
+        flutter-dashboard) deploy_flutter_dashboard ;;
         helm-chart)      deploy_helm_chart ;;  # Deploy all at once
         *)
             log_error "Unknown component: $component"
@@ -461,18 +550,31 @@ show_summary() {
     
     echo ""
     echo -e "${GREEN}Components deployed:${NC}"
+    echo "  • GKE Cluster (Terraform - Spot VMs, nip.io)"
     echo "  • Namespace: $NAMESPACE"
-    echo "  • cert-manager"
+    echo "  • cert-manager + Let's Encrypt"
+    echo "  • NGINX Ingress Controller"
     echo "  • Artemis MQTT Broker"
     echo "  • ClickHouse Operator + Cluster"
     echo "  • NiFi Operator + Cluster"
-    echo "  • Redis Cache"
-    echo "  • Dagster Orchestration"
+    echo "  • Redis Cache (15 min TTL hot metrics)"
+    echo "  • Dagster Orchestration (5 jobs, 2 sensors)"
     echo "  • Prometheus Metrics"
-    echo "  • Grafana Dashboards"
-    echo "  • Dashboard API"
-    echo "  • IoT Producer"
+    echo "  • Grafana Dashboards (5 dashboards incl. ClickHouse)"
+    echo "  • Dashboard API (Redis + ClickHouse endpoints)"
+    echo "  • IoT Producer (10-100 devices, 10 metrics)"
+    echo "  • Flutter Dashboard (optional - requires Flutter SDK)"
     echo ""
+    
+    # Show nip.io URLs if terraform was used
+    if [ -d "$TERRAFORM_DIR" ] && [ -f "$TERRAFORM_DIR/terraform.tfstate" ]; then
+        echo -e "${CYAN}Service URLs (nip.io):${NC}"
+        cd "$TERRAFORM_DIR"
+        terraform output service_urls 2>/dev/null || true
+        cd "$PROJECT_ROOT"
+        echo ""
+    fi
+    
     echo -e "${YELLOW}Next steps:${NC}"
     echo "  1. Configure NiFi flow: ./scripts/access-info.sh"
     echo "  2. View Grafana dashboards"
@@ -549,8 +651,9 @@ show_usage() {
     echo "  help         Show this help message"
     echo ""
     echo -e "${YELLOW}Components (in deployment order):${NC}"
+    echo "  terraform           Provision GKE cluster (Spot VMs, nip.io, cert-manager)"
     echo "  namespace           Create required namespaces"
-    echo "  cert-manager        Install cert-manager (required for NiFiKop)"
+    echo "  cert-manager        Install cert-manager (skip if using terraform)"
     echo "  helm-deps           Update Helm dependencies"
     echo "  zookeeper           Deploy Zookeeper (NiFi coordination)"
     echo "  artemis             Deploy Artemis MQTT broker"
@@ -559,26 +662,32 @@ show_usage() {
     echo "  nifi                Deploy NiFi operator + cluster"
     echo "  dagster             Deploy Dagster orchestration"
     echo "  prometheus          Deploy Prometheus metrics"
-    echo "  grafana             Deploy Grafana dashboards"
-    echo "  dashboard-api       Deploy Dashboard API"
-    echo "  producer            Deploy IoT device simulator"
+    echo "  grafana             Deploy Grafana dashboards (5 dashboards)"
+    echo "  dashboard-api       Deploy Dashboard API (Redis + ClickHouse)"
+    echo "  producer            Deploy IoT device simulator (10-100 devices)"
+    echo "  flutter-dashboard   Build Flutter dashboard app (requires Flutter SDK)"
     echo ""
     echo -e "${YELLOW}Special:${NC}"
-    echo "  helm-chart          Deploy ALL components at once via Helm"
+    echo "  helm-chart          Deploy ALL K8s components at once via Helm"
+    echo ""
+    echo -e "${YELLOW}GKE Cluster (Terraform):${NC}"
+    echo "  Project:    data-cluster-gke1"
+    echo "  Zone:       us-central1-a (zonal - cheapest)"
+    echo "  Nodes:      Spot VMs e2-medium (~\$7/month each)"
+    echo "  Ingress:    NGINX + nip.io wildcard DNS"
+    echo "  TLS:        cert-manager + Let's Encrypt"
     echo ""
     echo -e "${YELLOW}Examples:${NC}"
+    echo "  $0 deploy terraform          # Create GKE cluster first"
     echo "  $0                           # Deploy all in chain"
     echo "  $0 all                       # Deploy all in chain"
     echo "  $0 deploy redis              # Deploy only Redis"
-    echo "  $0 deploy dagster            # Deploy only Dagster"
-    echo "  $0 deploy clickhouse         # Deploy only ClickHouse"
-    echo "  $0 deploy helm-chart         # Deploy everything at once"
+    echo "  $0 deploy helm-chart         # Deploy all K8s components at once"
     echo "  $0 status                    # Show status"
     echo "  $0 destroy                   # Destroy everything"
     echo ""
-    echo -e "${YELLOW}Chain deployment example:${NC}"
-    echo "  $0 deploy namespace"
-    echo "  $0 deploy cert-manager"
+    echo -e "${YELLOW}Full deployment (new cluster):${NC}"
+    echo "  $0 deploy terraform"
     echo "  $0 deploy helm-deps"
     echo "  $0 deploy zookeeper"
     echo "  $0 deploy artemis"
@@ -588,7 +697,9 @@ show_usage() {
     echo "  $0 deploy dagster"
     echo "  $0 deploy prometheus"
     echo "  $0 deploy grafana"
+    echo "  $0 deploy dashboard-api"
     echo "  $0 deploy producer"
+    echo "  $0 deploy flutter-dashboard  # Optional"
     echo ""
 }
 

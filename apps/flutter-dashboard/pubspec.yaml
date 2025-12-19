@@ -1,0 +1,43 @@
+name: edge_analytics_dashboard
+description: Flutter dashboard for Edge Analytics - reads from Redis cache and ClickHouse
+
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # HTTP client
+  http: ^1.1.0
+  
+  # Charts
+  fl_chart: ^0.66.0
+  
+  # State management
+  provider: ^6.1.1
+  
+  # Date formatting
+  intl: ^0.19.0
+  
+  # JSON serialization
+  json_annotation: ^4.8.1
+  
+  # Timer for auto-refresh
+  async: ^2.11.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  build_runner: ^2.4.7
+  json_serializable: ^6.7.1
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/

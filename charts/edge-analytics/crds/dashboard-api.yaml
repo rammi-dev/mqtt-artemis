@@ -27,21 +27,32 @@ spec:
               value: "6379"
             - name: REDIS_PASSWORD
               value: "redis-secret"
+            - name: CLICKHOUSE_HOST
+              value: "clickhouse-telemetry-db.clickhouse.svc.cluster.local"
+            - name: CLICKHOUSE_PORT
+              value: "8123"
+            - name: CLICKHOUSE_USER
+              value: "admin"
+            - name: CLICKHOUSE_PASSWORD
+              value: "password"
           command:
             - /bin/bash
             - -c
             - |
-              pip install fastapi uvicorn redis --quiet
+              pip install fastapi uvicorn redis clickhouse-driver --quiet
               cat << 'EOF' > /app/main.py
               import os
               import json
-              from fastapi import FastAPI, HTTPException
+              from datetime import datetime, timedelta
+              from typing import Optional
+              from fastapi import FastAPI, HTTPException, Query
               from fastapi.middleware.cors import CORSMiddleware
               import redis
+              from clickhouse_driver import Client as CHClient
 
-              app = FastAPI(title="Edge Analytics Dashboard API", version="1.0.0")
+              app = FastAPI(title="Edge Analytics Dashboard API", version="2.0.0")
 
-              # CORS for dashboard frontends
+              # CORS for dashboard frontends (Flutter, Web)
               app.add_middleware(
                   CORSMiddleware,
                   allow_origins=["*"],
@@ -58,96 +69,238 @@ spec:
                   decode_responses=True
               )
 
+              # ClickHouse connection
+              def get_ch_client():
+                  return CHClient(
+                      host=os.getenv('CLICKHOUSE_HOST', 'localhost'),
+                      port=int(os.getenv('CLICKHOUSE_PORT', '9000')),
+                      user=os.getenv('CLICKHOUSE_USER', 'default'),
+                      password=os.getenv('CLICKHOUSE_PASSWORD', ''),
+                      database='telemetry'
+                  )
+
               @app.get("/health")
               def health_check():
                   """API health check"""
+                  status = {"status": "healthy"}
                   try:
                       r.ping()
-                      return {"status": "healthy", "redis": "connected"}
+                      status["redis"] = "connected"
+                  except:
+                      status["redis"] = "disconnected"
+                  try:
+                      ch = get_ch_client()
+                      ch.execute("SELECT 1")
+                      status["clickhouse"] = "connected"
+                  except:
+                      status["clickhouse"] = "disconnected"
+                  return status
+
+              # ============================================
+              # REDIS HOT CACHE ENDPOINTS (3 metrics for Flutter)
+              # ============================================
+
+              @app.get("/api/dashboard/redis-metrics")
+              def get_redis_metrics():
+                  """Get Redis cached metrics (hot cache with 15 min TTL)
+                  Used by Flutter app for real-time display"""
+                  try:
+                      avg_temp = float(r.get('metrics:avg:temperature:5m') or 0)
+                      avg_pressure = float(r.get('metrics:avg:pressure:5m') or 0)
+                      throughput = float(r.get('metrics:throughput:msg_per_sec') or 0)
+                      active_devices = r.scard('metrics:active:devices') or 0
+                      warning_count = int(r.get('metrics:warnings:count') or 0)
+                      anomaly_count = int(r.get('metrics:anomalies:count') or 0)
+                      
+                      return {
+                          "avg_temperature": avg_temp,
+                          "avg_pressure": avg_pressure,
+                          "throughput": throughput,
+                          "active_devices": active_devices,
+                          "warning_count": warning_count,
+                          "anomaly_count": anomaly_count,
+                          "timestamp": datetime.utcnow().isoformat(),
+                          "source": "redis",
+                          "ttl_seconds": 900
+                      }
                   except Exception as e:
-                      return {"status": "unhealthy", "error": str(e)}
+                      raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
+
+              @app.get("/api/dashboard/redis-device/{device_id}")
+              def get_redis_device(device_id: str):
+                  """Get latest reading for a specific device from Redis"""
+                  data = r.hgetall(f"metrics:latest:{device_id}")
+                  if not data:
+                      raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+                  return data
+
+              # ============================================
+              # CLICKHOUSE ENDPOINTS (2 metrics for Flutter)
+              # ============================================
+
+              @app.get("/api/dashboard/clickhouse/temperature-timeseries")
+              def get_temperature_timeseries(duration_minutes: int = Query(60, ge=5, le=1440)):
+                  """Get temperature time-series from ClickHouse (for Flutter charts)"""
+                  try:
+                      ch = get_ch_client()
+                      query = f"""
+                      SELECT 
+                          toStartOfMinute(timestamp) as time,
+                          avg(temperature) as avg_temp,
+                          min(temperature) as min_temp,
+                          max(temperature) as max_temp
+                      FROM events
+                      WHERE timestamp >= now() - INTERVAL {duration_minutes} MINUTE
+                        AND temperature IS NOT NULL
+                      GROUP BY time
+                      ORDER BY time
+                      """
+                      result = ch.execute(query)
+                      return [
+                          {
+                              "timestamp": row[0].isoformat() if row[0] else None,
+                              "avg_temp": round(row[1], 2) if row[1] else None,
+                              "min_temp": round(row[2], 2) if row[2] else None,
+                              "max_temp": round(row[3], 2) if row[3] else None
+                          }
+                          for row in result
+                      ]
+                  except Exception as e:
+                      raise HTTPException(status_code=500, detail=f"ClickHouse error: {str(e)}")
+
+              @app.get("/api/dashboard/clickhouse/hourly-stats")
+              def get_hourly_stats(hours: int = Query(24, ge=1, le=168)):
+                  """Get hourly event aggregations from ClickHouse (for Flutter bar charts)"""
+                  try:
+                      ch = get_ch_client()
+                      query = f"""
+                      SELECT 
+                          toStartOfHour(timestamp) as hour,
+                          count() as events,
+                          avg(temperature) as avg_temp,
+                          max(temperature) as max_temp,
+                          min(temperature) as min_temp,
+                          avg(pressure) as avg_pressure,
+                          countIf(status = 'WARN' OR status = 'CRITICAL') as warnings
+                      FROM events
+                      WHERE timestamp >= now() - INTERVAL {hours} HOUR
+                      GROUP BY hour
+                      ORDER BY hour
+                      """
+                      result = ch.execute(query)
+                      return [
+                          {
+                              "hour": row[0].isoformat() if row[0] else None,
+                              "events": row[1],
+                              "avg_temp": round(row[2], 2) if row[2] else None,
+                              "max_temp": round(row[3], 2) if row[3] else None,
+                              "min_temp": round(row[4], 2) if row[4] else None,
+                              "avg_pressure": round(row[5], 2) if row[5] else None,
+                              "warnings": row[6]
+                          }
+                          for row in result
+                      ]
+                  except Exception as e:
+                      raise HTTPException(status_code=500, detail=f"ClickHouse error: {str(e)}")
+
+              @app.get("/api/dashboard/clickhouse/device-stats")
+              def get_device_stats(limit: int = Query(20, ge=1, le=100)):
+                  """Get device statistics from ClickHouse"""
+                  try:
+                      ch = get_ch_client()
+                      query = f"""
+                      SELECT 
+                          device_id,
+                          any(device_type) as device_type,
+                          any(location) as location,
+                          count() as total_events,
+                          avg(temperature) as avg_temperature,
+                          avg(pressure) as avg_pressure,
+                          avg(humidity) as avg_humidity,
+                          argMax(battery_level, timestamp) as battery_level,
+                          countIf(status = 'WARN' OR status = 'CRITICAL') as warnings,
+                          max(timestamp) as last_seen
+                      FROM events
+                      WHERE timestamp >= now() - INTERVAL 1 HOUR
+                      GROUP BY device_id
+                      ORDER BY total_events DESC
+                      LIMIT {limit}
+                      """
+                      result = ch.execute(query)
+                      return [
+                          {
+                              "device_id": row[0],
+                              "device_type": row[1] or "unknown",
+                              "location": row[2] or "unknown",
+                              "total_events": row[3],
+                              "avg_temperature": round(row[4], 2) if row[4] else None,
+                              "avg_pressure": round(row[5], 2) if row[5] else None,
+                              "avg_humidity": round(row[6], 2) if row[6] else None,
+                              "battery_level": round(row[7], 1) if row[7] else None,
+                              "warnings": row[8],
+                              "last_seen": row[9].isoformat() if row[9] else None
+                          }
+                          for row in result
+                      ]
+                  except Exception as e:
+                      raise HTTPException(status_code=500, detail=f"ClickHouse error: {str(e)}")
+
+              @app.get("/api/dashboard/clickhouse/events-per-minute")
+              def get_events_per_minute(minutes: int = Query(60, ge=5, le=1440)):
+                  """Get events per minute from ClickHouse"""
+                  try:
+                      ch = get_ch_client()
+                      query = f"""
+                      SELECT 
+                          toStartOfMinute(timestamp) as minute,
+                          count() as events
+                      FROM events
+                      WHERE timestamp >= now() - INTERVAL {minutes} MINUTE
+                      GROUP BY minute
+                      ORDER BY minute
+                      """
+                      result = ch.execute(query)
+                      return [
+                          {"timestamp": row[0].isoformat(), "events": row[1]}
+                          for row in result
+                      ]
+                  except Exception as e:
+                      raise HTTPException(status_code=500, detail=f"ClickHouse error: {str(e)}")
+
+              # ============================================
+              # LEGACY ENDPOINTS (backward compatibility)
+              # ============================================
 
               @app.get("/api/dashboard/system-health")
               def get_system_health():
                   """Get overall system health metrics"""
                   data = r.get('dashboard:system_health')
-                  if not data:
-                      raise HTTPException(status_code=404, detail="No health data available")
-                  return json.loads(data)
-
-              @app.get("/api/dashboard/device-stats")
-              def get_device_stats():
-                  """Get per-device statistics (last 5 minutes)"""
-                  data = r.get('dashboard:device_stats')
-                  if not data:
-                      raise HTTPException(status_code=404, detail="No device stats available")
-                  return {"devices": json.loads(data)}
+                  if data:
+                      return json.loads(data)
+                  # Fallback to Redis hot metrics
+                  return get_redis_metrics()
 
               @app.get("/api/dashboard/timeseries")
               def get_timeseries():
                   """Get time-series data (last hour, 1-minute buckets)"""
                   data = r.get('dashboard:timeseries_1h')
-                  if not data:
-                      raise HTTPException(status_code=404, detail="No timeseries data available")
-                  return {"data": json.loads(data)}
-
-              @app.get("/api/dashboard/latest-events")
-              def get_latest_events():
-                  """Get latest readings per device"""
-                  data = r.get('dashboard:latest_events')
-                  if not data:
-                      raise HTTPException(status_code=404, detail="No latest events available")
-                  return {"events": json.loads(data)}
-
-              @app.get("/api/dashboard/hourly-stats")
-              def get_hourly_stats():
-                  """Get hourly aggregation (last 24 hours)"""
-                  data = r.get('dashboard:hourly_stats_24h')
-                  if not data:
-                      raise HTTPException(status_code=404, detail="No hourly stats available")
-                  return {"data": json.loads(data)}
+                  if data:
+                      return {"data": json.loads(data)}
+                  # Fallback to ClickHouse
+                  return {"data": get_temperature_timeseries(60)}
 
               @app.get("/api/dashboard/all")
               def get_all_dashboard_data():
                   """Get all dashboard data in a single request"""
                   return {
-                      "system_health": json.loads(r.get('dashboard:system_health') or '{}'),
-                      "device_stats": json.loads(r.get('dashboard:device_stats') or '[]'),
-                      "timeseries": json.loads(r.get('dashboard:timeseries_1h') or '[]'),
-                      "latest_events": json.loads(r.get('dashboard:latest_events') or '[]'),
-                      "hourly_stats": json.loads(r.get('dashboard:hourly_stats_24h') or '[]'),
+                      "redis_metrics": get_redis_metrics(),
+                      "temperature_timeseries": get_temperature_timeseries(60),
+                      "hourly_stats": get_hourly_stats(24),
                   }
-
-              # ============================================
-              # REAL-TIME ENDPOINTS (from NiFi Redis stream)
-              # ============================================
-              
-              @app.get("/api/realtime/devices")
-              def get_realtime_devices():
-                  """Get real-time device states (updated by NiFi)"""
-                  devices = []
-                  # Scan for device:* keys set by NiFi PutRedisHashRecord
-                  for key in r.scan_iter("device:*"):
-                      data = r.hgetall(key)
-                      if data:
-                          data['device_id'] = key.replace('device:', '')
-                          devices.append(data)
-                  return {"devices": devices, "count": len(devices)}
-
-              @app.get("/api/realtime/device/{device_id}")
-              def get_device_state(device_id: str):
-                  """Get current state of a specific device"""
-                  data = r.hgetall(f"device:{device_id}")
-                  if not data:
-                      raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
-                  return data
-
-              @app.get("/api/realtime/stream")
-              def get_stream_events(count: int = 100):
-                  """Get recent events from Redis Stream (set by NiFi)"""
-                  try:
-                      events = r.xrevrange('telemetry:stream', count=count)
-                      return {
+              EOF
+              mkdir -p /app
+              cd /app
+              uvicorn main:app --host 0.0.0.0 --port 8000
                           "events": [
                               {"id": e[0], "data": e[1]} for e in events
                           ],
