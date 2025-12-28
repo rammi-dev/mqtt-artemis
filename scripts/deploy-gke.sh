@@ -13,6 +13,7 @@
 #   kubeconfig       - Configure kubectl
 #   infrastructure   - Deploy cert-manager and ingress-nginx
 #   cert-manager     - Deploy cert-manager only
+#   cert-manager-issuers - Deploy ClusterIssuers only
 #   ingress-nginx    - Deploy ingress-nginx only
 #   analytics        - Deploy all analytics components
 #   artemis          - Deploy Artemis MQTT only
@@ -210,6 +211,30 @@ deploy_cert_manager() {
 }
 
 # =============================================================================
+# Deploy ClusterIssuers
+# =============================================================================
+
+deploy_cert_manager_issuers() {
+    log_step "Deploying ClusterIssuers..."
+
+    check_required_tools helm kubectl
+    check_kubectl_context
+
+    local CHART_DIR="$PROJECT_ROOT/charts/infrastructure/cert-manager-issuers"
+
+    # Wait a bit for CRDs to be fully ready
+    log_info "Waiting for cert-manager CRDs to be ready..."
+    sleep 5
+
+    helm upgrade --install cert-manager-issuers "$CHART_DIR" \
+        --namespace cert-manager \
+        --wait \
+        --timeout 2m
+
+    log_success "ClusterIssuers deployed successfully"
+}
+
+# =============================================================================
 # Deploy ingress-nginx
 # =============================================================================
 
@@ -248,9 +273,10 @@ deploy_ingress_nginx() {
 # =============================================================================
 
 deploy_infrastructure() {
-    log_step "Deploying infrastructure components..."
+    log_step "Deploying infrastructure (cert-manager + ingress-nginx)..."
 
     deploy_cert_manager
+    deploy_cert_manager_issuers
     deploy_ingress_nginx
 
     log_success "Infrastructure deployed successfully"
@@ -629,6 +655,9 @@ case "$COMMAND" in
         ;;
     cert-manager)
         deploy_cert_manager
+        ;;
+    cert-manager-issuers)
+        deploy_cert_manager_issuers
         ;;
     ingress-nginx)
         deploy_ingress_nginx

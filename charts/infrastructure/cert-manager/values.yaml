@@ -46,7 +46,7 @@ cert-manager:
 # =============================================================================
 
 letsencrypt:
-  email: admin@example.com  # Change this to your email
+  email: account.allegro@gmail.com  # Change this to your email
   
   production:
     enabled: true

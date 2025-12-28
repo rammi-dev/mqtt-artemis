@@ -82,25 +82,17 @@ check_namespace() {
 get_terraform_output() {
     local output_name=$1
     local terraform_dir=${2:-gke-infrastructure/gke}
-    
-    # Convert to absolute path if relative
-    if [[ ! "$terraform_dir" = /* ]]; then
-        # Get script directory and project root
-        local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        local project_root="$(cd "$script_dir/../.." && pwd)"
-        terraform_dir="$project_root/$terraform_dir"
-    fi
 
     if [ ! -d "$terraform_dir" ]; then
         log_error "Terraform directory not found: $terraform_dir"
         exit 1
     fi
 
-    pushd "$terraform_dir" > /dev/null
+    cd "$terraform_dir"
     local value
     value=$(terraform output -raw "$output_name" 2>/dev/null)
     local exit_code=$?
-    popd > /dev/null
+    cd - >/dev/null
 
     if [ $exit_code -ne 0 ]; then
         log_error "Failed to get Terraform output: $output_name"

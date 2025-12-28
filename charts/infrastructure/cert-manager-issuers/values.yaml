@@ -1,0 +1,17 @@
+# =============================================================================
+# ClusterIssuers Configuration
+# =============================================================================
+
+letsencrypt:
+  email: account.allegro@gmail.com
+  
+  production:
+    enabled: true
+    server: https://acme-v02.api.letsencrypt.org/directory
+  
+  staging:
+    enabled: true
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+  
+  selfsigned:
+    enabled: true
