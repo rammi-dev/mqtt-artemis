@@ -1,76 +1,21 @@
 # =============================================================================
-# Example Terraform Variables
-# Copy to terraform.tfvars and customize
+# GKE Cluster Configuration
+# =============================================================================
+# Copy this to terraform.tfvars and customize as needed
 # =============================================================================
 
-# GCP Project
-project_id = "data-cluster-gke1"
-
-# Region/Zone (us-central1 is typically cheapest)
-region = "us-central1"
-zone   = "us-central1-a"
-
-# Cluster name
+project_id   = "data-cluster-gke1"
+region       = "europe-central2"
+zone         = "europe-central2-b"
 cluster_name = "edge-analytics"
-environment  = "dev"
+environment  = "production"
 
-# =============================================================================
-# Node Pool - Cost Optimization
-# =============================================================================
+# Node Pool Configuration (Cost-Optimized)
+machine_type   = "e2-medium" # 2 vCPU, 4GB RAM
+min_node_count = 1           # Start with 1 node
+max_node_count = 3           # Scale up to 3 nodes
+disk_size_gb   = 50          # Minimal disk
+use_spot_vms   = true        # 60-91% cheaper!
 
-# Machine type options (cheapest to more capable):
-# - e2-small:      2 vCPU,  2GB RAM  (~$12/month standard, ~$4/month spot)
-# - e2-medium:     2 vCPU,  4GB RAM  (~$24/month standard, ~$7/month spot) [RECOMMENDED]
-# - e2-standard-2: 2 vCPU,  8GB RAM  (~$48/month standard, ~$14/month spot)
-# - e2-standard-4: 4 vCPU, 16GB RAM  (~$96/month standard, ~$29/month spot)
-machine_type = "e2-medium"
-
-# Node count (start small, scale up as needed)
-min_node_count = 1
-max_node_count = 3
-
-# Disk size (minimum for edge workloads)
-disk_size_gb = 50
-
-# SPOT VMs - 60-91% cheaper! Recommended for dev/staging
-# Set to false for production workloads that can't tolerate interruption
-use_spot_vms = true
-
-# Private nodes (more secure, same cost)
-enable_private_nodes = false
-
-# =============================================================================
-# cert-manager / Let's Encrypt
-# =============================================================================
-
-cert_manager_version = "v1.13.3"
-
-# IMPORTANT: Change this to your email!
-letsencrypt_email = "your-email@example.com"
-
-# Use staging for testing (no rate limits)
-# letsencrypt_server = "https://acme-staging-v02.api.letsencrypt.org/directory"
-
-# Use production for real certificates
-letsencrypt_server = "https://acme-v02.api.letsencrypt.org/directory"
-
-# =============================================================================
-# Ingress
-# =============================================================================
-
-ingress_nginx_version = "4.9.0"
-
-# =============================================================================
-# Cost Estimate (Spot VMs, us-central1)
-# =============================================================================
-#
-# Minimum setup (1 node):
-# - GKE cluster management: $0 (free tier for 1 zonal cluster)
-# - e2-medium spot VM:      ~$7/month
-# - 50GB pd-standard disk:  ~$2/month
-# - Static IP:              ~$3/month (if unused)
-# - Egress:                 Varies
-# ------------------------------------------
-# TOTAL:                    ~$12-15/month
-#
-# With 3 nodes:             ~$30-40/month
+# Security
+enable_private_nodes = false # Set to true for production

@@ -1,0 +1,18 @@
+{{- if .Values.letsencrypt.production.enabled }}
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: {{ .Values.letsencrypt.production.server }}
+    email: {{ .Values.letsencrypt.email }}
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+            serviceType: ClusterIP
+{{- end }}

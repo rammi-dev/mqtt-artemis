@@ -1,6 +1,13 @@
 # =============================================================================
-# GKE Cluster - Cheapest Zonal Configuration
-# Project: data-cluster-gke1
+# GKE Cluster - Single Cluster for Infrastructure + Analytics
+# =============================================================================
+# This Terraform configuration creates ONLY GCP resources:
+# - GKE cluster (zonal)
+# - Node pool with autoscaling
+# - Static IP for ingress
+#
+# Infrastructure (cert-manager, ingress-nginx) and Analytics (edge-analytics)
+# are deployed via Helm in separate namespaces.
 # =============================================================================
 
 terraform {
@@ -10,18 +17,6 @@ terraform {
     google = {
       source  = "hashicorp/google"
       version = "~> 5.0"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.25"
-    }
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.12"
-    }
-    kubectl = {
-      source  = "gavinbunney/kubectl"
-      version = "~> 1.14"
     }
   }
 }
@@ -36,37 +31,13 @@ provider "google" {
   zone    = var.zone
 }
 
-# Configure kubernetes provider after cluster is created
-provider "kubernetes" {
-  host                   = "https://${google_container_cluster.primary.endpoint}"
-  token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
-}
-
-provider "helm" {
-  kubernetes {
-    host                   = "https://${google_container_cluster.primary.endpoint}"
-    token                  = data.google_client_config.default.access_token
-    cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
-  }
-}
-
-provider "kubectl" {
-  host                   = "https://${google_container_cluster.primary.endpoint}"
-  token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
-  load_config_file       = false
-}
-
-data "google_client_config" "default" {}
-
 # =============================================================================
 # GKE Cluster - Zonal (Cheapest Option)
 # =============================================================================
 
 resource "google_container_cluster" "primary" {
   name     = var.cluster_name
-  location = var.zone  # Zonal cluster (cheaper than regional)
+  location = var.zone # Zonal cluster (cheaper than regional)
   project  = var.project_id
 
   # We manage node pools separately for more control
@@ -80,7 +51,7 @@ resource "google_container_cluster" "primary" {
   # Disable expensive add-ons
   addons_config {
     http_load_balancing {
-      disabled = false  # Keep for ingress
+      disabled = false # Keep for ingress
     }
     horizontal_pod_autoscaling {
       disabled = false
@@ -122,15 +93,18 @@ resource "google_container_cluster" "primary" {
   monitoring_config {
     enable_components = ["SYSTEM_COMPONENTS"]
     managed_prometheus {
-      enabled = false  # Use our own Prometheus
+      enabled = false # Use our own Prometheus via Helm
     }
   }
 
-  # Private cluster for security (optional, can reduce costs)
-  private_cluster_config {
-    enable_private_nodes    = var.enable_private_nodes
-    enable_private_endpoint = false
-    master_ipv4_cidr_block  = var.enable_private_nodes ? "172.16.0.0/28" : null
+  # Private cluster for security (optional)
+  dynamic "private_cluster_config" {
+    for_each = var.enable_private_nodes ? [1] : []
+    content {
+      enable_private_nodes    = true
+      enable_private_endpoint = false
+      master_ipv4_cidr_block  = "172.16.0.0/28"
+    }
   }
 
   # Binary authorization disabled (cost)
@@ -152,16 +126,16 @@ resource "google_container_cluster" "primary" {
 # =============================================================================
 
 resource "google_container_node_pool" "primary_nodes" {
-  name       = "${var.cluster_name}-node-pool"
-  location   = var.zone
-  cluster    = google_container_cluster.primary.name
-  project    = var.project_id
+  name     = "${var.cluster_name}-node-pool"
+  location = var.zone
+  cluster  = google_container_cluster.primary.name
+  project  = var.project_id
 
   # Autoscaling for cost optimization
   autoscaling {
     min_node_count  = var.min_node_count
     max_node_count  = var.max_node_count
-    location_policy = "ANY"  # Allows spot VMs from any zone
+    location_policy = "ANY" # Allows spot VMs from any zone
   }
 
   # Start with minimum nodes
@@ -176,16 +150,13 @@ resource "google_container_node_pool" "primary_nodes" {
   node_config {
     # Cheapest machine type for edge workloads
     machine_type = var.machine_type
-    
+
     # SPOT VMs - up to 91% cheaper!
     spot = var.use_spot_vms
 
     # Minimal disk
     disk_size_gb = var.disk_size_gb
-    disk_type    = "pd-standard"  # Cheapest disk type
-
-    # Preemptible alternative (if spot not available)
-    # preemptible = true
+    disk_type    = "pd-standard" # Cheapest disk type
 
     # Container-Optimized OS (free)
     image_type = "COS_CONTAINERD"
@@ -239,7 +210,7 @@ resource "google_compute_address" "ingress_ip" {
   project      = var.project_id
   region       = var.region
   address_type = "EXTERNAL"
-  network_tier = "STANDARD"  # Cheaper than PREMIUM
+  network_tier = "STANDARD" # Cheaper than PREMIUM
 }
 
 # =============================================================================
@@ -261,6 +232,26 @@ output "cluster_ca_certificate" {
   description = "GKE cluster CA certificate"
   value       = google_container_cluster.primary.master_auth[0].cluster_ca_certificate
   sensitive   = true
+}
+
+output "cluster_location" {
+  description = "GKE cluster location (zone)"
+  value       = google_container_cluster.primary.location
+}
+
+output "project_id" {
+  description = "GCP project ID"
+  value       = var.project_id
+}
+
+output "region" {
+  description = "GCP region"
+  value       = var.region
+}
+
+output "zone" {
+  description = "GCP zone"
+  value       = var.zone
 }
 
 output "ingress_ip" {

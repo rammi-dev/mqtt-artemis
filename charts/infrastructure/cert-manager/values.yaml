@@ -1,0 +1,60 @@
+# =============================================================================
+# cert-manager Configuration
+# =============================================================================
+
+# Upstream cert-manager chart configuration
+cert-manager:
+  installCRDs: true
+  
+  # Resource limits for cost optimization
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Webhook resources
+  webhook:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 50m
+        memory: 64Mi
+  
+  # CA Injector resources
+  cainjector:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 50m
+        memory: 128Mi
+  
+  # Tolerate spot VMs
+  tolerations:
+    - key: cloud.google.com/gke-spot
+      operator: Exists
+      effect: NoSchedule
+
+# =============================================================================
+# ClusterIssuer Configuration
+# =============================================================================
+
+letsencrypt:
+  email: admin@example.com  # Change this to your email
+  
+  production:
+    enabled: true
+    server: https://acme-v02.api.letsencrypt.org/directory
+  
+  staging:
+    enabled: true
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+  
+  selfsigned:
+    enabled: true

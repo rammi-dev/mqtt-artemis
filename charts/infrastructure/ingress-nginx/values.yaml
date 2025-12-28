@@ -1,0 +1,44 @@
+# =============================================================================
+# ingress-nginx Configuration
+# =============================================================================
+
+# Upstream ingress-nginx chart configuration
+ingress-nginx:
+  controller:
+    # Service configuration
+    service:
+      # Static IP will be set via --set during deployment
+      # loadBalancerIP: ""  # Set this via: --set ingress-nginx.controller.service.loadBalancerIP=<IP>
+      annotations:
+        cloud.google.com/network-tier: "Standard"  # Cheaper than Premium
+    
+    # Resource limits for cost optimization
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    
+    # Single replica for cost (increase for HA)
+    replicaCount: 1
+    
+    # Enable metrics for Prometheus
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: false  # Enable if using Prometheus Operator
+    
+    # Tolerate spot VMs
+    tolerations:
+      - key: cloud.google.com/gke-spot
+        operator: Exists
+        effect: NoSchedule
+    
+    # Configuration options
+    config:
+      use-proxy-protocol: "false"
+      # Add custom nginx configurations here
+      # proxy-body-size: "100m"
+      # ssl-protocols: "TLSv1.2 TLSv1.3"
