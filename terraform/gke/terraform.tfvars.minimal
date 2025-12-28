@@ -1,0 +1,32 @@
+# =============================================================================
+# GKE Cluster Configuration - MINIMAL SETUP
+# =============================================================================
+# For: Infrastructure + Artemis MQTT + ClickHouse + Redis
+# Cost: ~$25-50/month with Spot VMs
+# =============================================================================
+
+project_id   = "data-cluster-gke1"
+region       = "europe-central2"
+zone         = "europe-central2-b"
+cluster_name = "edge-analytics-minimal"
+environment  = "development"
+
+# Node Pool Configuration - Minimal but sufficient
+machine_type   = "e2-standard-2" # 2 vCPU, 8GB RAM
+min_node_count = 1               # Start with 1 node
+max_node_count = 2               # Scale up to 2 nodes if needed
+disk_size_gb   = 50              # Minimal disk
+use_spot_vms   = true            # 60-91% cheaper!
+
+# Security
+enable_private_nodes = false # Set to true for production
+
+# =============================================================================
+# Resource Allocation:
+# - Infrastructure (cert-manager + ingress-nginx): ~200m CPU, ~300Mi RAM
+# - Artemis MQTT: ~250m CPU, ~512Mi RAM
+# - ClickHouse: ~500m CPU, ~1Gi RAM
+# - Redis: ~100m CPU, ~128Mi RAM
+# - GKE overhead: ~300m CPU, ~700Mi RAM
+# Total: ~1.35 CPU, ~2.6 GB RAM (fits in e2-standard-2)
+# =============================================================================

@@ -1,21 +1,46 @@
 # =============================================================================
-# GKE Cluster Configuration
+# GKE Cluster Configuration - EXAMPLE
 # =============================================================================
 # Copy this to terraform.tfvars and customize as needed
+#
+# Pre-configured examples available:
+#   - terraform.tfvars.minimal     (e2-standard-2, ~$25-50/month)
+#   - terraform.tfvars.balanced    (e2-standard-4, ~$50-150/month) RECOMMENDED
+#   - terraform.tfvars.production  (e2-standard-4 HA, ~$200-500/month)
 # =============================================================================
 
-project_id   = "data-cluster-gke1"
+project_id   = "data-cluster-gke1"      # Change to your GCP project ID
 region       = "europe-central2"
 zone         = "europe-central2-b"
 cluster_name = "edge-analytics"
 environment  = "production"
 
-# Node Pool Configuration (Cost-Optimized)
-machine_type   = "e2-medium" # 2 vCPU, 4GB RAM
-min_node_count = 1           # Start with 1 node
-max_node_count = 3           # Scale up to 3 nodes
-disk_size_gb   = 50          # Minimal disk
-use_spot_vms   = true        # 60-91% cheaper!
+# Node Pool Configuration - Balanced (RECOMMENDED for full analytics stack)
+machine_type   = "e2-standard-4" # 4 vCPU, 16GB RAM
+min_node_count = 1               # Start with 1 node
+max_node_count = 3               # Scale up to 3 nodes
+disk_size_gb   = 100             # Disk per node
+use_spot_vms   = true            # 60-91% cheaper! (set false for production)
 
 # Security
 enable_private_nodes = false # Set to true for production
+
+# =============================================================================
+# Resource Requirements:
+#
+# This configuration (e2-standard-4) supports:
+#   ✅ Infrastructure (cert-manager + ingress-nginx)
+#   ✅ Artemis MQTT broker
+#   ✅ ClickHouse database
+#   ✅ Apache NiFi data processing
+#   ✅ Redis cache
+#   ✅ Dagster orchestration
+#   ✅ Prometheus monitoring
+#   ✅ Grafana dashboards
+#   ✅ Dashboard API
+#
+# For minimal setup (just Artemis + ClickHouse):
+#   Use: machine_type = "e2-standard-2"
+#
+# See docs/RESOURCE_REQUIREMENTS.md for detailed calculations
+# =============================================================================
