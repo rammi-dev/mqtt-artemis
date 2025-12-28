@@ -33,7 +33,7 @@ scripts/
 ## What You Have Now
 
 ### 1. Single Terraform Configuration
-**Location:** `terraform/gke/`
+**Location:** `gke-infrastructure/`
 
 **Creates:**
 - 1 GKE cluster (zonal, europe-central2-b)
@@ -42,7 +42,7 @@ scripts/
 
 **Usage:**
 ```bash
-cd terraform/gke
+cd gke-infrastructure
 terraform init
 terraform apply
 ```
@@ -92,7 +92,7 @@ This does everything:
 ### Option 2: Manual Steps
 ```bash
 # 1. Create GKE cluster
-cd terraform/gke
+cd gke-infrastructure
 terraform apply
 INGRESS_IP=$(terraform output -raw ingress_ip)
 $(terraform output -raw kubeconfig_command)
@@ -145,7 +145,7 @@ GKE Cluster (edge-analytics)
 
 1. **Configure:**
    ```bash
-   cd terraform/gke
+   cd gke-infrastructure
    cp terraform.tfvars.example terraform.tfvars
    vim terraform.tfvars  # Set your project_id
    ```

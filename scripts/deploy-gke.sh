@@ -9,7 +9,7 @@
 #
 # Commands:
 #   all              - Deploy everything (default)
-#   terraform        - Create GKE cluster via Terraform
+#   cluster          - Create GKE cluster
 #   kubeconfig       - Configure kubectl
 #   infrastructure   - Deploy cert-manager and ingress-nginx
 #   cert-manager     - Deploy cert-manager only
@@ -46,8 +46,8 @@ ${BLUE}Usage:${NC}
   ./scripts/deploy-gke.sh [command]
 
 ${BLUE}Commands:${NC}
-  ${GREEN}all${NC}              Deploy everything (Terraform + Infrastructure + Analytics)
-  ${GREEN}terraform${NC}        Create GKE cluster via Terraform
+  ${GREEN}all${NC}              Deploy everything (Cluster + Infrastructure + Analytics)
+  ${GREEN}cluster${NC}          Create GKE cluster
   ${GREEN}kubeconfig${NC}       Configure kubectl to connect to cluster
   
   ${CYAN}Infrastructure:${NC}
@@ -78,7 +78,7 @@ ${BLUE}Examples:${NC}
   ./scripts/deploy-gke.sh all
 
   # Step-by-step deployment
-  ./scripts/deploy-gke.sh terraform
+  ./scripts/deploy-gke.sh cluster
   ./scripts/deploy-gke.sh kubeconfig
   ./scripts/deploy-gke.sh infrastructure
   ./scripts/deploy-gke.sh analytics
@@ -96,7 +96,7 @@ ${BLUE}Examples:${NC}
   ./scripts/deploy-gke.sh destroy
 
 ${BLUE}Deployment Flow:${NC}
-  1. terraform       → Create GKE cluster
+  1. cluster         → Create GKE cluster
   2. kubeconfig      → Configure kubectl
   3. infrastructure  → Deploy cert-manager + ingress-nginx
   4. analytics       → Deploy all analytics components
@@ -115,13 +115,13 @@ deploy_terraform() {
 
     check_required_tools terraform
 
-    cd terraform/gke
+    cd gke-infrastructure/gke
 
     # Check if terraform.tfvars exists
     if [ ! -f terraform.tfvars ]; then
         log_warn "terraform.tfvars not found. Creating from example..."
         cp terraform.tfvars.example terraform.tfvars
-        log_error "Please edit terraform/gke/terraform.tfvars with your configuration and run this script again."
+        log_error "Please edit gke-infrastructure/gke/terraform.tfvars with your configuration and run this script again."
         exit 1
     fi
 
@@ -397,9 +397,9 @@ destroy_all() {
 
     # Destroy Terraform resources
     log_info "Destroying GKE cluster..."
-    cd terraform/gke
+    cd gke-infrastructure/gke
     terraform destroy -auto-approve
-    cd ../..
+    cd ../../
 
     log_success "All resources destroyed"
 }
@@ -451,7 +451,7 @@ case "$COMMAND" in
     all)
         deploy_all
         ;;
-    terraform)
+    cluster|terraform)  # Accept both names for backwards compatibility
         deploy_terraform
         ;;
     kubeconfig)

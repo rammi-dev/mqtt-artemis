@@ -12,7 +12,7 @@ This chart deploys the NGINX Ingress Controller for GKE with static IP support.
 
 ```bash
 # Get static IP from Terraform
-INGRESS_IP=$(cd terraform/gke && terraform output -raw ingress_ip)
+INGRESS_IP=$(cd gke-infrastructure && terraform output -raw ingress_ip)
 
 # Deploy ingress-nginx
 helm upgrade --install ingress-nginx charts/infrastructure/ingress-nginx/ \

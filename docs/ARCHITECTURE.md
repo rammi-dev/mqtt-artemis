@@ -338,10 +338,10 @@ sequenceDiagram
 
 ### GKE Cluster (Cheapest Configuration)
 
-The infrastructure is provisioned via Terraform in `/terraform/gke/`:
+The infrastructure is provisioned via Terraform in `/gke-infrastructure/`:
 
 ```
-terraform/gke/
+gke-infrastructure/
 ├── main.tf              # GKE cluster + node pool
 ├── variables.tf         # Configuration variables
 ├── cert-manager.tf      # cert-manager + Let's Encrypt
@@ -393,7 +393,7 @@ terraform/gke/
 
 ```bash
 # 1. Navigate to terraform directory
-cd terraform/gke
+cd gke-infrastructure
 
 # 2. Configure variables
 cp terraform.tfvars.example terraform.tfvars

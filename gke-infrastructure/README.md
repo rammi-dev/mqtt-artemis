@@ -1,14 +1,22 @@
-# Infrastructure Structure - Final
+# GKE Infrastructure - Terraform Configuration
 
-## Directory Structure
+Terraform configuration for provisioning Google Kubernetes Engine (GKE) clusters.
+
+## Structure
 
 ```
-terraform/
-└── gke/                          # Single GKE cluster configuration
-    ├── main.tf                   # GCP resources only
-    ├── variables.tf              # Configuration variables
-    ├── terraform.tfvars.example  # Example configuration
-    └── README.md                 # Documentation
+gke-infrastructure/
+├── gke/                    # Main GKE cluster configuration
+│   ├── main.tf            (GCP resources only)
+│   ├── variables.tf
+│   ├── terraform.tfvars.example
+│   ├── terraform.tfvars.minimal      # e2-standard-2 setup
+│   ├── terraform.tfvars.balanced     # e2-standard-4 (recommended)
+│   ├── terraform.tfvars.production   # HA production setup
+│   ├── CONFIGURATIONS.md  # Configuration guide
+│   └── README.md
+└── README.md              # This file
+```
 
 charts/
 ├── infrastructure/               # Infrastructure Helm charts
@@ -33,9 +41,59 @@ scripts/
 └── deploy-gke.sh                # Automated deployment
 ```
 
+## Quick Start
+
+### 1. Choose Configuration
+
+```bash
+cd gke-infrastructure/gke
+
+# Choose based on your needs:
+cp terraform.tfvars.balanced terraform.tfvars  # RECOMMENDED (full stack)
+# OR
+cp terraform.tfvars.minimal terraform.tfvars   # Minimal (Artemis + ClickHouse)
+# OR
+cp terraform.tfvars.production terraform.tfvars # Production HA
+```
+
+### 2. Configure
+
+Edit `terraform.tfvars` with your GCP project ID:
+
+```hcl
+project_id = "your-gcp-project-id"
+```
+
+### 3. Deploy
+
+```bash
+# Initialize Terraform
+terraform init
+
+# Review plan
+terraform plan
+
+# Apply
+terraform apply
+```
+
+### 4. Get Cluster Credentials
+
+```bash
+# Configure kubectl
+$(terraform output -raw kubeconfig_command)
+
+# Verify
+kubectl get nodes
+```
+
+## Configuration Options
+
+See [gke/CONFIGURATIONS.md](gke/CONFIGURATIONS.md) for detailed configuration options and resource requirements.
+
 ## What Each Directory Does
 
-### `terraform/gke/` - GCP Resources
+### `gke-infrastructure/` - GCP Resources
 **Purpose:** Create GKE cluster and cloud infrastructure
 
 **Contains:**
@@ -71,7 +129,7 @@ scripts/
 ## Deployment Flow
 
 ```
-1. Terraform (terraform/gke/)
+1. Terraform (gke-infrastructure/)
    ↓ Creates GKE cluster + static IP
    
 2. kubectl configuration

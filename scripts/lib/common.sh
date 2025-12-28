@@ -81,7 +81,7 @@ check_namespace() {
 # Get Terraform output
 get_terraform_output() {
     local output_name=$1
-    local terraform_dir=${2:-terraform/gke}
+    local terraform_dir=${2:-gke-infrastructure/gke}
 
     if [ ! -d "$terraform_dir" ]; then
         log_error "Terraform directory not found: $terraform_dir"

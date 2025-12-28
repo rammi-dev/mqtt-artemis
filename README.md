@@ -77,7 +77,7 @@ A complete edge analytics platform running on Google Kubernetes Engine (GKE) wit
 
 ```bash
 # 1. Configure Terraform
-cd terraform/gke
+cd gke-infrastructure
 cp terraform.tfvars.example terraform.tfvars
 vim terraform.tfvars  # Set your project_id
 
@@ -110,12 +110,17 @@ Services are accessible via nip.io:
 
 ```
 artemis/
-├── terraform/
-│   └── gke/                      # Terraform for GKE cluster (GCP only)
-│       ├── main.tf               # GKE cluster, node pool, static IP
-│       ├── variables.tf
-│       ├── terraform.tfvars.example
-│       └── README.md
+├── gke-infrastructure/           # GKE cluster provisioning (Terraform)
+│   ├── gke/                      # Main GKE configuration
+│   │   ├── main.tf               # GKE cluster, node pool, static IP
+│   │   ├── variables.tf
+│   │   ├── terraform.tfvars.example
+│   │   ├── terraform.tfvars.minimal      # e2-standard-2 setup
+│   │   ├── terraform.tfvars.balanced     # e2-standard-4 (recommended)
+│   │   ├── terraform.tfvars.production   # HA production setup
+│   │   ├── CONFIGURATIONS.md     # Configuration guide
+│   │   └── README.md
+│   └── README.md
 │
 ├── charts/
 │   ├── infrastructure/           # Infrastructure Helm charts
@@ -139,22 +144,26 @@ artemis/
 │   └── flutter-dashboard/       # Flutter dashboard app
 │
 ├── scripts/
-│   ├── deploy-gke.sh           # Automated deployment
-│   ├── deploy.sh               # Legacy deployment
-│   └── access-info.sh          # Service access info
+│   ├── lib/
+│   │   └── common.sh           # Shared library functions
+│   ├── deploy-gke.sh           # Modular deployment script
+│   ├── access-info.sh          # Service access info
+│   └── README.md
 │
 ├── docs/
 │   ├── ARCHITECTURE.md         # Detailed architecture
+│   ├── RESOURCE_REQUIREMENTS.md # Resource calculations
 │   └── infrastructure_architecture_*.png
 │
 ├── ARCHITECTURE.md             # Architecture overview
 ├── INFRASTRUCTURE.md           # Infrastructure quick reference
-└── README.md                   # This file
+├── README.md                   # This file
+└── .gitignore                  # Git ignore rules
 ```
 
 ## 🧩 Components
 
-### Terraform Layer (`terraform/gke/`)
+### Terraform Layer (`gke-infrastructure/`)
 
 **Purpose:** Provision GCP cloud resources
 
@@ -226,7 +235,7 @@ IoT Devices → MQTT → NiFi → ClickHouse
 #### Step 1: Create GKE Cluster
 
 ```bash
-cd terraform/gke
+cd gke-infrastructure
 terraform init
 terraform apply
 ```
@@ -241,7 +250,7 @@ $(terraform output -raw kubeconfig_command)
 
 ```bash
 cd ../..
-INGRESS_IP=$(cd terraform/gke && terraform output -raw ingress_ip)
+INGRESS_IP=$(cd gke-infrastructure && terraform output -raw ingress_ip)
 
 # Deploy cert-manager
 helm upgrade --install cert-manager charts/infrastructure/cert-manager/ \
@@ -302,7 +311,7 @@ The infrastructure is optimized for cost efficiency:
 - **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)** - Infrastructure quick reference
 
 ### Component Documentation
-- **[terraform/gke/README.md](terraform/gke/README.md)** - Terraform usage
+- **[gke-infrastructure/README.md](gke-infrastructure/README.md)** - Terraform usage
 - **[charts/infrastructure/cert-manager/README.md](charts/infrastructure/cert-manager/README.md)** - cert-manager details
 - **[charts/infrastructure/ingress-nginx/README.md](charts/infrastructure/ingress-nginx/README.md)** - ingress-nginx details
 - **[charts/edge-analytics/README.md](charts/edge-analytics/README.md)** - Analytics platform details
@@ -347,7 +356,7 @@ kubectl logs -n edge -l app=nifi
 
 ```bash
 # Scale node pool
-cd terraform/gke
+cd gke-infrastructure
 # Edit terraform.tfvars: max_node_count = 5
 terraform apply
 
@@ -375,7 +384,7 @@ helm uninstall ingress-nginx -n ingress-nginx
 helm uninstall cert-manager -n cert-manager
 
 # Destroy GKE cluster
-cd terraform/gke
+cd gke-infrastructure
 terraform destroy
 ```
 
@@ -384,7 +393,7 @@ terraform destroy
 ### Terraform Issues
 
 ```bash
-cd terraform/gke
+cd gke-infrastructure
 terraform init -upgrade
 terraform validate
 terraform plan

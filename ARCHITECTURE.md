@@ -11,7 +11,7 @@ Single GKE cluster with clean separation between Terraform (GCP resources) and H
 ## Components
 
 ### Terraform Layer (GCP Resources)
-**Location:** `terraform/gke/`
+**Location:** `gke-infrastructure/`
 
 Creates:
 - **GKE Cluster** - Zonal cluster in europe-central2-b
@@ -73,7 +73,7 @@ Contains:
 ## Directory Structure
 
 ```
-terraform/gke/              # Terraform (GCP only)
+gke-infrastructure/              # Terraform (GCP only)
 ├── main.tf                 # GKE cluster, node pool, static IP
 ├── variables.tf
 ├── terraform.tfvars.example
@@ -153,6 +153,6 @@ After deployment, services are accessible via nip.io:
 ## Documentation
 
 - [INFRASTRUCTURE.md](INFRASTRUCTURE.md) - Quick reference guide
-- [terraform/gke/README.md](terraform/gke/README.md) - Terraform usage
+- [gke-infrastructure/README.md](gke-infrastructure/README.md) - Terraform usage
 - [charts/infrastructure/cert-manager/README.md](charts/infrastructure/cert-manager/README.md) - cert-manager details
 - [charts/infrastructure/ingress-nginx/README.md](charts/infrastructure/ingress-nginx/README.md) - ingress-nginx details

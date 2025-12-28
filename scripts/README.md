@@ -26,7 +26,7 @@ Modular deployment script with support for step-by-step or full deployment.
 
 **Commands:**
 - `all` - Deploy everything (default)
-- `terraform` - Create GKE cluster
+- `cluster` - Create GKE cluster
 - `kubeconfig` - Configure kubectl
 - `infrastructure` - Deploy cert-manager + ingress-nginx
 - `cert-manager` - Deploy cert-manager only
@@ -44,13 +44,14 @@ Modular deployment script with support for step-by-step or full deployment.
 - `destroy` - Destroy all resources
 - `help` - Show help
 
+
 **Examples:**
 ```bash
 # Full deployment
 ./scripts/deploy-gke.sh all
 
 # Step-by-step
-./scripts/deploy-gke.sh terraform
+./scripts/deploy-gke.sh cluster
 ./scripts/deploy-gke.sh kubeconfig
 ./scripts/deploy-gke.sh infrastructure
 ./scripts/deploy-gke.sh analytics
@@ -69,6 +70,7 @@ Modular deployment script with support for step-by-step or full deployment.
 ./scripts/deploy-gke.sh grafana
 ./scripts/deploy-gke.sh dashboard-api
 ```
+
 
 ### access-info.sh
 
