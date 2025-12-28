@@ -25,7 +25,9 @@
 #   dashboard-api    - Deploy Dashboard API only
 #   verify           - Verify deployment
 #   destroy          - Destroy everything
+#   cleanup-disks    - Clean up orphaned GCE disks
 #   help             - Show this help message
+
 # =============================================================================
 
 set -e  # Exit on error
@@ -71,6 +73,7 @@ ${BLUE}Commands:${NC}
   ${CYAN}Utilities:${NC}
   ${GREEN}verify${NC}           Verify deployment status
   ${GREEN}destroy${NC}          Destroy all resources (Helm + Terraform)
+  ${GREEN}cleanup-disks${NC}    Clean up orphaned GCE disks
   ${GREEN}help${NC}             Show this help message
 
 ${BLUE}Examples:${NC}
@@ -378,35 +381,171 @@ verify_deployment() {
 destroy_all() {
     log_step "Destroying all resources..."
 
-    check_required_tools helm kubectl terraform
+    check_required_tools helm kubectl terraform gcloud
 
-    if ! confirm_action "This will delete all Helm releases and the GKE cluster. Are you sure?"; then
+    if ! confirm_action "This will delete all Helm releases, Kubernetes resources, and the GKE cluster. Are you sure?"; then
         log_info "Aborted."
         exit 0
     fi
 
-    # Delete Helm releases
-    log_info "Deleting Helm releases..."
-    helm uninstall edge-analytics -n edge 2>/dev/null || log_warn "edge-analytics not found"
-    helm uninstall ingress-nginx -n ingress-nginx 2>/dev/null || log_warn "ingress-nginx not found"
-    helm uninstall cert-manager -n cert-manager 2>/dev/null || log_warn "cert-manager not found"
+    # Check if cluster is accessible
+    if kubectl cluster-info &>/dev/null; then
+        log_info "Cluster is accessible. Cleaning up Kubernetes resources..."
 
-    # Wait for resources to be cleaned up
-    log_info "Waiting for resources to be cleaned up..."
-    sleep 10
+        # Delete Helm releases
+        log_info "Deleting Helm releases..."
+        helm uninstall edge-analytics -n edge 2>/dev/null || log_warn "edge-analytics not found"
+        helm uninstall ingress-nginx -n ingress-nginx 2>/dev/null || log_warn "ingress-nginx not found"
+        helm uninstall cert-manager -n cert-manager 2>/dev/null || log_warn "cert-manager not found"
+
+        # Wait for pods to terminate
+        log_info "Waiting for pods to terminate..."
+        sleep 10
+
+        # Delete PVCs (this will trigger PV deletion)
+        log_info "Deleting PersistentVolumeClaims..."
+        kubectl delete pvc --all -n edge --timeout=60s 2>/dev/null || true
+        kubectl delete pvc --all -n ingress-nginx --timeout=60s 2>/dev/null || true
+        kubectl delete pvc --all -n cert-manager --timeout=60s 2>/dev/null || true
+
+        # Delete PVs
+        log_info "Deleting PersistentVolumes..."
+        kubectl delete pv --all --timeout=60s 2>/dev/null || true
+
+        # Delete namespaces (this will clean up remaining resources)
+        log_info "Deleting namespaces..."
+        kubectl delete namespace edge --timeout=120s 2>/dev/null || true
+        kubectl delete namespace ingress-nginx --timeout=60s 2>/dev/null || true
+        kubectl delete namespace cert-manager --timeout=60s 2>/dev/null || true
+
+        # Wait for resources to be cleaned up
+        log_info "Waiting for Kubernetes resources to be cleaned up..."
+        sleep 15
+
+        # List any remaining GCE disks that might be orphaned
+        log_info "Checking for orphaned GCE disks..."
+        CLUSTER_NAME=$(get_terraform_output "cluster_name" 2>/dev/null || echo "edge-analytics")
+        ZONE=$(get_terraform_output "zone" 2>/dev/null || echo "europe-central2-b")
+        PROJECT_ID=$(get_terraform_output "project_id" 2>/dev/null || echo "data-cluster-gke1")
+
+        # List disks that match the cluster pattern
+        ORPHANED_DISKS=$(gcloud compute disks list \
+            --project="$PROJECT_ID" \
+            --filter="zone:$ZONE AND name~gke-$CLUSTER_NAME" \
+            --format="value(name)" 2>/dev/null || true)
+
+        if [ -n "$ORPHANED_DISKS" ]; then
+            log_warn "Found potentially orphaned GCE disks:"
+            echo "$ORPHANED_DISKS"
+            
+            if confirm_action "Delete these orphaned disks?"; then
+                for disk in $ORPHANED_DISKS; do
+                    log_info "Deleting disk: $disk"
+                    gcloud compute disks delete "$disk" \
+                        --project="$PROJECT_ID" \
+                        --zone="$ZONE" \
+                        --quiet 2>/dev/null || log_warn "Failed to delete disk: $disk"
+                done
+            fi
+        else
+            log_info "No orphaned disks found"
+        fi
+    else
+        log_warn "Cluster not accessible. Skipping Kubernetes resource cleanup."
+        log_warn "You may need to manually delete orphaned GCE disks after cluster deletion."
+    fi
 
     # Destroy Terraform resources
-    log_info "Destroying GKE cluster..."
+    log_info "Destroying GKE cluster via Terraform..."
     cd gke-infrastructure/gke
     terraform destroy -auto-approve
     cd ../../
+
+    # Final check for orphaned disks after cluster deletion
+    log_info "Final check for orphaned GCE disks..."
+    FINAL_ORPHANED=$(gcloud compute disks list \
+        --project="$PROJECT_ID" \
+        --filter="zone:$ZONE AND name~gke-$CLUSTER_NAME" \
+        --format="value(name)" 2>/dev/null || true)
+
+    if [ -n "$FINAL_ORPHANED" ]; then
+        log_warn "Warning: Found orphaned disks after cluster deletion:"
+        echo "$FINAL_ORPHANED"
+        log_info "To delete them manually, run:"
+        for disk in $FINAL_ORPHANED; do
+            echo "  gcloud compute disks delete $disk --project=$PROJECT_ID --zone=$ZONE"
+        done
+    fi
 
     log_success "All resources destroyed"
 }
 
 # =============================================================================
-# Deploy All
+# Cleanup Orphaned Disks
 # =============================================================================
+
+cleanup_orphaned_disks() {
+    log_step "Cleaning up orphaned GCE disks..."
+
+    check_required_tools gcloud
+
+    # Get cluster info from Terraform or use defaults
+    CLUSTER_NAME=$(get_terraform_output "cluster_name" 2>/dev/null || echo "edge-analytics")
+    ZONE=$(get_terraform_output "zone" 2>/dev/null || echo "europe-central2-b")
+    PROJECT_ID=$(get_terraform_output "project_id" 2>/dev/null || echo "data-cluster-gke1")
+
+    log_info "Searching for orphaned disks..."
+    log_info "  Cluster: $CLUSTER_NAME"
+    log_info "  Zone: $ZONE"
+    log_info "  Project: $PROJECT_ID"
+
+    # List all disks that match the cluster pattern
+    ORPHANED_DISKS=$(gcloud compute disks list \
+        --project="$PROJECT_ID" \
+        --filter="zone:$ZONE AND name~gke-$CLUSTER_NAME" \
+        --format="table(name,sizeGb,type,status)" 2>/dev/null)
+
+    if [ -z "$ORPHANED_DISKS" ] || echo "$ORPHANED_DISKS" | grep -q "Listed 0 items"; then
+        log_success "No orphaned disks found!"
+        return 0
+    fi
+
+    echo ""
+    log_warn "Found potentially orphaned GCE disks:"
+    echo "$ORPHANED_DISKS"
+    echo ""
+
+    if confirm_action "Delete all these disks?"; then
+        DISK_NAMES=$(gcloud compute disks list \
+            --project="$PROJECT_ID" \
+            --filter="zone:$ZONE AND name~gke-$CLUSTER_NAME" \
+            --format="value(name)" 2>/dev/null)
+
+        for disk in $DISK_NAMES; do
+            log_info "Deleting disk: $disk"
+            if gcloud compute disks delete "$disk" \
+                --project="$PROJECT_ID" \
+                --zone="$ZONE" \
+                --quiet 2>/dev/null; then
+                log_success "Deleted: $disk"
+            else
+                log_error "Failed to delete: $disk"
+            fi
+        done
+
+        log_success "Disk cleanup complete"
+    else
+        log_info "Cleanup cancelled"
+        log_info "To delete disks manually, run:"
+        DISK_NAMES=$(gcloud compute disks list \
+            --project="$PROJECT_ID" \
+            --filter="zone:$ZONE AND name~gke-$CLUSTER_NAME" \
+            --format="value(name)" 2>/dev/null)
+        for disk in $DISK_NAMES; do
+            echo "  gcloud compute disks delete $disk --project=$PROJECT_ID --zone=$ZONE"
+        done
+    fi
+}
 
 deploy_all() {
     log_step "Starting full deployment..."
@@ -498,6 +637,9 @@ case "$COMMAND" in
         ;;
     destroy)
         destroy_all
+        ;;
+    cleanup-disks)
+        cleanup_orphaned_disks
         ;;
     help|--help|-h)
         show_help

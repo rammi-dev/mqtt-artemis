@@ -4,14 +4,14 @@
 # Copy this to terraform.tfvars and customize as needed
 #
 # Pre-configured examples available:
-#   - terraform.tfvars.minimal     (e2-standard-2, ~$25-50/month)
-#   - terraform.tfvars.balanced    (e2-standard-4, ~$50-150/month) RECOMMENDED
-#   - terraform.tfvars.production  (e2-standard-4 HA, ~$200-500/month)
+#   - terraform.tfvars.minimal     (e2-standard-2, ~$20-40/month)
+#   - terraform.tfvars.balanced    (e2-standard-4, ~$40-120/month) RECOMMENDED
+#   - terraform.tfvars.production  (e2-standard-4 HA, ~$160-400/month)
 # =============================================================================
 
 project_id   = "data-cluster-gke1"      # Change to your GCP project ID
-region       = "europe-central2"
-zone         = "europe-central2-b"
+region       = "us-central1"            # CHEAPEST region (Iowa)
+zone         = "us-central1-a"          # Primary zone
 cluster_name = "edge-analytics"
 environment  = "production"
 
@@ -24,6 +24,25 @@ use_spot_vms   = true            # 60-91% cheaper! (set false for production)
 
 # Security
 enable_private_nodes = false # Set to true for production
+
+# =============================================================================
+# Region Options (by cost, cheapest first):
+#
+# US Regions (CHEAPEST):
+#   region = "us-central1"  zone = "us-central1-a"  # Iowa (CHEAPEST)
+#   region = "us-east1"     zone = "us-east1-b"     # South Carolina
+#   region = "us-west1"     zone = "us-west1-a"     # Oregon
+#
+# Europe Regions (More expensive):
+#   region = "europe-west1"    zone = "europe-west1-b"    # Belgium (cheapest EU)
+#   region = "europe-west4"    zone = "europe-west4-a"    # Netherlands
+#   region = "europe-central2" zone = "europe-central2-b" # Warsaw (expensive!)
+#
+# Asia Regions:
+#   region = "asia-east1"   zone = "asia-east1-a"   # Taiwan
+#
+# Cost difference: US regions are ~15-25% cheaper than European regions
+# =============================================================================
 
 # =============================================================================
 # Resource Requirements:
