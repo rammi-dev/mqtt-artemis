@@ -32,8 +32,15 @@
 
 set -e  # Exit on error
 
-# Load common functions
+# =============================================================================
+# Project Root Directory
+# =============================================================================
+
+# Get the absolute path to the project root (parent of scripts directory)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source common functions
 source "$SCRIPT_DIR/lib/common.sh"
 
 # =============================================================================
@@ -118,13 +125,16 @@ deploy_terraform() {
 
     check_required_tools terraform
 
-    cd gke-infrastructure/gke
+    local TERRAFORM_DIR="$PROJECT_ROOT/gke-infrastructure/gke"
+    
+    pushd "$TERRAFORM_DIR" > /dev/null
 
     # Check if terraform.tfvars exists
     if [ ! -f terraform.tfvars ]; then
         log_warn "terraform.tfvars not found. Creating from example..."
         cp terraform.tfvars.example terraform.tfvars
-        log_error "Please edit gke-infrastructure/gke/terraform.tfvars with your configuration and run this script again."
+        popd > /dev/null
+        log_error "Please edit $TERRAFORM_DIR/terraform.tfvars with your configuration and run this script again."
         exit 1
     fi
 
@@ -141,7 +151,7 @@ deploy_terraform() {
     terraform apply tfplan
     rm -f tfplan
 
-    cd ../..
+    popd > /dev/null
 
     log_success "GKE cluster created successfully"
 }
@@ -180,7 +190,15 @@ deploy_cert_manager() {
     check_required_tools helm kubectl
     check_kubectl_context
 
-    helm upgrade --install cert-manager charts/infrastructure/cert-manager/ \
+    local CHART_DIR="$PROJECT_ROOT/charts/infrastructure/cert-manager"
+
+    # Update Helm dependencies
+    log_info "Updating Helm dependencies for cert-manager..."
+    pushd "$CHART_DIR" > /dev/null
+    helm dependency update
+    popd > /dev/null
+
+    helm upgrade --install cert-manager "$CHART_DIR" \
         --namespace cert-manager \
         --create-namespace \
         --wait \
@@ -201,11 +219,19 @@ deploy_ingress_nginx() {
     check_required_tools helm kubectl
     check_kubectl_context
 
+    local CHART_DIR="$PROJECT_ROOT/charts/infrastructure/ingress-nginx"
+
+    # Update Helm dependencies
+    log_info "Updating Helm dependencies for ingress-nginx..."
+    pushd "$CHART_DIR" > /dev/null
+    helm dependency update
+    popd > /dev/null
+
     # Get static IP
     INGRESS_IP=$(get_terraform_output "ingress_ip")
     log_info "Using static IP: $INGRESS_IP"
 
-    helm upgrade --install ingress-nginx charts/infrastructure/ingress-nginx/ \
+    helm upgrade --install ingress-nginx "$CHART_DIR" \
         --namespace ingress-nginx \
         --create-namespace \
         --set ingress-nginx.controller.service.loadBalancerIP=$INGRESS_IP \
@@ -240,18 +266,20 @@ deploy_analytics() {
     check_required_tools helm kubectl
     check_kubectl_context
 
+    local CHART_DIR="$PROJECT_ROOT/charts/edge-analytics"
+
     # Update Helm dependencies
     log_info "Updating Helm dependencies for edge-analytics..."
-    cd charts/edge-analytics
+    pushd "$CHART_DIR" > /dev/null
     helm dependency update
-    cd ../..
+    popd > /dev/null
 
     # Get nip.io domain
     NIP_IO_DOMAIN=$(get_terraform_output "nip_io_domain")
     log_info "Using domain: $NIP_IO_DOMAIN"
 
     # Deploy edge-analytics
-    helm upgrade --install edge-analytics charts/edge-analytics/ \
+    helm upgrade --install edge-analytics "$CHART_DIR" \
         --namespace edge \
         --create-namespace \
         --set ingress.domain=$NIP_IO_DOMAIN \
@@ -452,14 +480,14 @@ destroy_all() {
         fi
     else
         log_warn "Cluster not accessible. Skipping Kubernetes resource cleanup."
-        log_warn "You may need to manually delete orphaned GCE disks after cluster deletion."
+    log_warn "You may need to manually delete orphaned GCE disks after cluster deletion."
     fi
 
     # Destroy Terraform resources
     log_info "Destroying GKE cluster via Terraform..."
-    cd gke-infrastructure/gke
+    pushd "$PROJECT_ROOT/gke-infrastructure/gke" > /dev/null
     terraform destroy -auto-approve
-    cd ../../
+    popd > /dev/null
 
     # Final check for orphaned disks after cluster deletion
     log_info "Final check for orphaned GCE disks..."
