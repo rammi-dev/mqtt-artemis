@@ -1,0 +1,19 @@
+{{- if .Values.artemis.enabled }}
+apiVersion: broker.amq.io/v1beta1
+kind: ActiveMQArtemis
+metadata:
+  name: artemis
+  namespace: {{ .Release.Namespace }}
+spec:
+  deploymentPlan:
+    size: {{ .Values.artemis.replicas }}
+  console:
+    expose: false
+  acceptors:
+  - name: amqp
+    port: 5672
+    sslEnabled: false
+  - name: mqtt
+    port: 1883
+    sslEnabled: false
+{{- end }}

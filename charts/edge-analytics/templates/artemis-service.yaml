@@ -1,0 +1,18 @@
+{{- if .Values.artemis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: artemis-console-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ports:
+  - name: console
+    port: 8161
+    targetPort: 8161
+    protocol: TCP
+  selector:
+    ActiveMQArtemis: artemis
+  type: ClusterIP
+{{- end }}

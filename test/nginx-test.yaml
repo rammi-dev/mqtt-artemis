@@ -145,6 +145,14 @@ data:
                     <span class="label">&#128274; Protocol:</span> <span id="protocol"></span>
                 </div>
             </div>
+
+            <h2>Available Services</h2>
+            <div class="info">
+                <div class="info-item">
+                    <span class="label">&#128640; Artemis Console:</span> 
+                    <a href="https://artemis.35-206-88-67.nip.io/console" target="_blank" style="color: #667eea; text-decoration: none; font-weight: bold; background: white; padding: 5px 10px; border-radius: 5px;">Open Console</a>
+                </div>
+            </div>
             
             <div class="footer">
                 Powered by Kubernetes on GKE

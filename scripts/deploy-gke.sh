@@ -352,7 +352,46 @@ deploy_component() {
 }
 
 deploy_artemis() {
-    deploy_component "Artemis MQTT" "artemis.operator.enabled"
+    log_step "Deploying Artemis MQTT (Phase 1: Operator)..."
+
+    check_required_tools helm kubectl
+    check_kubectl_context
+
+    # Update Helm dependencies if needed
+    if [ ! -d "charts/edge-analytics/charts" ]; then
+        log_info "Updating Helm dependencies..."
+        cd charts/edge-analytics
+        helm dependency update
+        cd ../..
+    fi
+
+    # Get nip.io domain
+    NIP_IO_DOMAIN=$(get_terraform_output "nip_io_domain" 2>/dev/null || echo "")
+
+    # Phase 1: Deploy Operator only (disable instance)
+    helm upgrade --install edge-analytics charts/edge-analytics/ \
+        --namespace edge \
+        --create-namespace \
+        --set ingress.domain=$NIP_IO_DOMAIN \
+        --set artemis.operator.enabled=true \
+        --set artemis.enabled=false \
+        --wait \
+        --timeout 5m
+
+    log_success "Artemis Operator deployed successfully"
+    log_step "Deploying Artemis MQTT (Phase 2: Instance)..."
+
+    # Phase 2: Deploy Instance (enable instance)
+    helm upgrade --install edge-analytics charts/edge-analytics/ \
+        --namespace edge \
+        --create-namespace \
+        --set ingress.domain=$NIP_IO_DOMAIN \
+        --set artemis.operator.enabled=true \
+        --set artemis.enabled=true \
+        --wait \
+        --timeout 5m
+
+    log_success "Artemis MQTT deployed successfully"
 }
 
 deploy_clickhouse() {

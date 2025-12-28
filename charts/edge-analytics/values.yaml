@@ -9,6 +9,10 @@ artemis:
   artemisPassword: admin
   persistence:
     enabled: false
+  ingress:
+    enabled: true
+    issuer: letsencrypt-staging
+    hostName: artemis
 
 clickhouse:
   enabled: true

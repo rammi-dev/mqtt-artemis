@@ -1,0 +1,27 @@
+{{- if and .Values.artemis.enabled .Values.artemis.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: artemis-console
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.artemis.ingress.issuer | quote }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - {{ .Values.artemis.ingress.hostName }}.{{ .Values.ingress.domain }}
+    secretName: artemis-console-tls
+  rules:
+  - host: {{ .Values.artemis.ingress.hostName }}.{{ .Values.ingress.domain }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: artemis-console-svc
+            port:
+              number: 8161
+{{- end }}
