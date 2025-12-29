@@ -1,0 +1,23 @@
+# Keycloak Database Configuration
+
+# Number of PostgreSQL instances (replicas)
+replicas: 1
+
+# Storage configuration
+storage:
+  size: 5Gi
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# PostgreSQL version
+postgresVersion: "16"
+
+# Team ID (used by operator for grouping)
+teamId: "keycloak"

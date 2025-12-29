@@ -1,0 +1,34 @@
+apiVersion: acid.zalan.do/v1
+kind: postgresql
+metadata:
+  name: keycloak-db
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: keycloak-db
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  teamId: {{ .Values.teamId | quote }}
+  
+  volume:
+    size: {{ .Values.storage.size }}
+  
+  numberOfInstances: {{ .Values.replicas }}
+  
+  users:
+    keycloak:
+      - superuser
+      - createdb
+  
+  databases:
+    keycloak: keycloak
+  
+  postgresql:
+    version: {{ .Values.postgresVersion | quote }}
+  
+  resources:
+    requests:
+      cpu: {{ .Values.resources.requests.cpu }}
+      memory: {{ .Values.resources.requests.memory }}
+    limits:
+      cpu: {{ .Values.resources.limits.cpu }}
+      memory: {{ .Values.resources.limits.memory }}

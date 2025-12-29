@@ -1,0 +1,24 @@
+# Postgres Operator Configuration
+
+postgres-operator:
+  # Kubernetes configuration
+  configKubernetes:
+    enable_pod_antiaffinity: false
+    pod_environment_configmap: postgres-pod-config
+    watched_namespace: "*"  # Watch all namespaces
+    
+  # Default pod resources
+  configPostgresPodResources:
+    default_cpu_request: 100m
+    default_memory_request: 256Mi
+    default_cpu_limit: 500m
+    default_memory_limit: 512Mi
+    
+  # Operator resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

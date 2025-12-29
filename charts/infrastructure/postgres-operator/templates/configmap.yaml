@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-pod-config
+  namespace: {{ .Release.Namespace }}
+data:
+  # Pod environment variables for Spilo (Postgres containers)
+  # These are injected into all PostgreSQL pods

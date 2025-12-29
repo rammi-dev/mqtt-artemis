@@ -65,6 +65,11 @@ ${BLUE}Commands:${NC}
   ${GREEN}cert-manager${NC}     Deploy cert-manager only
   ${GREEN}ingress-nginx${NC}    Deploy ingress-nginx only
   
+  ${CYAN}Keycloak Infrastructure:${NC}
+  ${GREEN}postgres-operator${NC} Deploy Postgres Operator
+  ${GREEN}keycloak-db${NC}      Deploy Keycloak Database
+  ${GREEN}keycloak${NC}         Deploy Keycloak
+  
   ${CYAN}Analytics (All):${NC}
   ${GREEN}analytics${NC}        Deploy all analytics components
   
@@ -418,6 +423,104 @@ deploy_grafana() {
     deploy_component "Grafana" "grafana.enabled"
 }
 
+# =============================================================================
+# Deploy Keycloak Infrastructure
+# =============================================================================
+
+deploy_postgres_operator() {
+    log_step "Deploying Postgres Operator..."
+
+    check_required_tools helm kubectl
+    check_kubectl_context
+
+    local CHART_DIR="$PROJECT_ROOT/charts/infrastructure/postgres-operator"
+
+    # Update Helm dependencies
+    log_info "Updating Helm dependencies for postgres-operator..."
+    pushd "$CHART_DIR" > /dev/null
+    helm dependency update
+    popd > /dev/null
+
+    helm upgrade --install postgres-operator "$CHART_DIR" \
+        --namespace postgres-operator \
+        --create-namespace \
+        --wait \
+        --timeout 5m
+
+    wait_for_pods "postgres-operator" "app.kubernetes.io/name=postgres-operator" 300
+
+    log_success "Postgres Operator deployed successfully"
+}
+
+deploy_keycloak_db() {
+    log_step "Deploying Keycloak Database..."
+
+    check_required_tools helm kubectl
+    check_kubectl_context
+
+    local CHART_DIR="$PROJECT_ROOT/charts/infrastructure/keycloak-db"
+
+    helm upgrade --install keycloak-db "$CHART_DIR" \
+        --namespace keycloak \
+        --create-namespace \
+        --wait \
+        --timeout 10m
+
+    log_info "Waiting for PostgreSQL cluster to be ready..."
+    kubectl wait --for=condition=Ready pod -l application=spilo,cluster-name=keycloak-db -n keycloak --timeout=600s || true
+
+    log_success "Keycloak Database deployed successfully"
+}
+
+deploy_keycloak() {
+    log_step "Deploying Keycloak (Phase 1: Operator + CRDs)..."
+
+    check_required_tools helm kubectl
+    check_kubectl_context
+
+    local CHART_DIR="$PROJECT_ROOT/charts/infrastructure/keycloak"
+
+    # Get nip.io domain
+    NIP_IO_DOMAIN=$(get_terraform_output "nip_io_domain" 2>/dev/null || echo "")
+    
+    # Get admin password from env or use default
+    ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-"admin"}
+
+    # Phase 1: Deploy Operator + CRDs only (disable instance)
+    helm upgrade --install keycloak "$CHART_DIR" \
+        --namespace keycloak \
+        --create-namespace \
+        --set operator.enabled=true \
+        --set keycloak.enabled=false \
+        --wait \
+        --timeout 5m
+
+    wait_for_pods "keycloak" "app.kubernetes.io/name=keycloak-operator" 300
+
+    # Wait for CRDs to be ready
+    log_info "Waiting for Keycloak CRDs to be registered..."
+    sleep 5
+
+    log_success "Keycloak Operator deployed successfully"
+    log_step "Deploying Keycloak (Phase 2: Instance)..."
+
+    # Phase 2: Deploy Instance (enable instance)
+    helm upgrade --install keycloak "$CHART_DIR" \
+        --namespace keycloak \
+        --create-namespace \
+        --set keycloak.enabled=true \
+        --set keycloak.adminPassword=$ADMIN_PASSWORD \
+        --set keycloak.ingress.hostname=keycloak.$NIP_IO_DOMAIN \
+        --wait \
+        --timeout 10m
+
+    wait_for_pods "keycloak" "app=keycloak" 300
+
+    log_success "Keycloak deployed successfully"
+    log_info "Access Keycloak at: https://keycloak.$NIP_IO_DOMAIN"
+    log_info "Admin user: admin"
+}
+
 deploy_dashboard_api() {
     log_step "Deploying Dashboard API..."
 
@@ -724,6 +827,15 @@ case "$COMMAND" in
         ;;
     grafana)
         deploy_grafana
+        ;;
+    postgres-operator)
+        deploy_postgres_operator
+        ;;
+    keycloak-db)
+        deploy_keycloak_db
+        ;;
+    keycloak)
+        deploy_keycloak
         ;;
     dashboard-api)
         deploy_dashboard_api

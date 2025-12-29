@@ -38,6 +38,10 @@ flowchart LR
                 API[Dashboard API]
                 Grafana[📊 Grafana]
             end
+            
+            subgraph Security
+                Keycloak[🔐 Keycloak]
+            end
 
             subgraph Apps
                 Dashboard[Flutter App]
@@ -333,6 +337,18 @@ sequenceDiagram
   flutter run -d android   # Mobile
   ```
 - **API Configuration**: Set `API_BASE_URL` in `lib/services/metrics_service.dart`
+
+#### 11. **Keycloak (Identity Management)**
+- **Purpose**: Centralized authentication and authorization
+- **Deployment**: Official Keycloak Operator
+- **Architecture**:
+  - **Operator**: Manages Keycloak lifecycle
+  - **Database**: Dedicated PostgreSQL 16 cluster (managed by Zalando Postgres Operator)
+  - **Ingress**: Nginx-based with SSL termination
+- **Features**:
+  - Single Sign-On (SSO)
+  - Admin Console via `proxy` configuration
+  - Realm export/import via CRD
 
 ## Infrastructure (Terraform)
 

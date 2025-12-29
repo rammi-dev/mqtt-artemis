@@ -1,0 +1,13 @@
+apiVersion: v2
+name: keycloak-db
+description: PostgreSQL database for Keycloak (managed by Postgres Operator)
+version: 1.0.0
+appVersion: "16"
+
+keywords:
+  - postgresql
+  - keycloak
+  - database
+
+maintainers:
+  - name: Infrastructure Team

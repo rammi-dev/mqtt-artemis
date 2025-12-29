@@ -1,0 +1,15 @@
+apiVersion: v2
+name: keycloak
+description: Keycloak Identity and Access Management (Operator-based)
+version: 1.0.0
+appVersion: "23.0.0"
+
+keywords:
+  - keycloak
+  - identity
+  - authentication
+  - sso
+  - operator
+
+maintainers:
+  - name: Infrastructure Team

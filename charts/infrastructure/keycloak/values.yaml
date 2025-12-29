@@ -1,0 +1,50 @@
+# Keycloak Operator and Instance Configuration
+
+# Operator configuration
+operator:
+  enabled: true
+  namespace: keycloak
+  version: "26.4.7"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Keycloak instance configuration
+keycloak:
+  enabled: true
+  
+  # Admin credentials
+  adminUser: admin
+  adminPassword: ""  # Set via --set during deployment
+  
+  # Database configuration
+  database:
+    host: keycloak-db.keycloak.svc.cluster.local
+    port: 5432
+    database: keycloak
+    username: keycloak
+    # Password from existing secret created by Postgres Operator
+    existingSecret: keycloak.keycloak-db.credentials.postgresql.acid.zalan.do
+    existingSecretKey: password
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    hostname: ""  # Set via --set during deployment
+    issuer: letsencrypt-staging
+  
+  # Resource limits
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  
+  # Replica count
+  replicas: 1

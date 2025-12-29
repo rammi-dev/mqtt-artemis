@@ -53,6 +53,14 @@ A complete edge analytics platform running on Google Kubernetes Engine (GKE) wit
 │ │             │  │              │  │ • Grafana     │ │
 │ │             │  │              │  │ • Dashboard   │ │
 │ └─────────────┘  └──────────────┘  └────────────────┘ │
+│                                         ┌────────────────┐ │
+│                                         │    keycloak    │ │
+│                                         │                │ │
+│                                         │ • Operator     │ │
+│                                         │ • PostgreSQL   │ │
+│                                         │ • Keycloak     │ │
+│                                         └────────────────┘ │
+│ └─────────────┘  └──────────────┘  └────────────────┘ │
 └─────────────────────────────────────────────────────────┘
                           ↑
 ┌─────────────────────────────────────────────────────────┐
@@ -105,6 +113,7 @@ Services are accessible via nip.io:
 - **NiFi**: `https://nifi.<INGRESS_IP>.nip.io`
 - **Dagster**: `https://dagster.<INGRESS_IP>.nip.io`
 - **Dashboard API**: `https://api.<INGRESS_IP>.nip.io`
+- **Keycloak**: `https://keycloak.<INGRESS_IP>.nip.io`
 
 ## 📁 Repository Structure
 
@@ -213,6 +222,16 @@ IoT Devices → MQTT → NiFi → ClickHouse
                        ↓
                   Dashboard API → Flutter App
 ```
+
+### Security Layer (`charts/infrastructure/keycloak/`)
+
+**Purpose:** Identity and Access Management
+
+**Components:**
+- **Zalando Postgres Operator** - Manages database infrastructure
+- **Keycloak Operator** - Manages Keycloak lifecycle
+- **Keycloak** - IAM service (v26)
+- **PostgreSQL** - Dedicated database for Keycloak managed by operator
 
 ## 🔄 Deployment Process
 
