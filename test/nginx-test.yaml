@@ -125,7 +125,7 @@ data:
     <body>
         <div class="container">
             <div class="check">&#10003;</div>
-            <h1>Ptynia buziak</h1>
+            <h1>IoT anaytics deployment status</h1>
             <div class="status">GKE Cluster is Running</div>
             
             <div class="info">
@@ -150,7 +150,11 @@ data:
             <div class="info">
                 <div class="info-item">
                     <span class="label">&#128640; Artemis Console:</span> 
-                    <a href="https://artemis.35-206-88-67.nip.io/console" target="_blank" style="color: #667eea; text-decoration: none; font-weight: bold; background: white; padding: 5px 10px; border-radius: 5px;">Open Console</a>
+                    <a id="artemis-link" href="#" target="_blank" style="color: #667eea; text-decoration: none; font-weight: bold; background: white; padding: 5px 10px; border-radius: 5px;">Open Console</a>
+                </div>
+                <div class="info-item">
+                    <span class="label">🔐 Keycloak:</span> 
+                    <a id="keycloak-link" href="#" target="_blank" style="color: #667eea; text-decoration: none; font-weight: bold; background: white; padding: 5px 10px; border-radius: 5px;">Open Admin</a>
                 </div>
             </div>
             
@@ -163,6 +167,15 @@ data:
             // Display current URL info
             document.getElementById('hostname').textContent = window.location.hostname;
             document.getElementById('protocol').textContent = window.location.protocol.toUpperCase();
+            
+            // Extract base domain (IP.nip.io format) by removing the subdomain
+            const hostname = window.location.hostname;
+            // Remove 'test.' prefix to get base domain like '35-206-88-67.nip.io'
+            const baseDomain = hostname.replace(/^test\./, '');
+            
+            // Set dynamic service URLs
+            document.getElementById('artemis-link').href = `https://artemis.${baseDomain}/console`;
+            document.getElementById('keycloak-link').href = `https://keycloak.${baseDomain}/admin/`;
             
             // Check SSL status
             if (window.location.protocol === 'https:') {
@@ -201,10 +214,10 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - test.35-206-88-67.nip.io
+    - test.35.206.88.67.nip.io
     secretName: nginx-test-tls
   rules:
-  - host: test.35-206-88-67.nip.io
+  - host: test.35.206.88.67.nip.io
     http:
       paths:
       - path: /
@@ -214,3 +227,4 @@ spec:
             name: nginx-test
             port:
               number: 80
+

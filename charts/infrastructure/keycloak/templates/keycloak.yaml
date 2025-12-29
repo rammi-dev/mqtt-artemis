@@ -33,8 +33,7 @@ spec:
     headers: xforwarded
 
   ingress:
-    enabled: true
-    className: nginx
+    enabled: false
 
   {{- if .Values.keycloak.ingress.hostname }}
   hostname:

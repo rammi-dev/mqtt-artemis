@@ -486,6 +486,23 @@ deploy_keycloak() {
     # Get admin password from env or use default
     ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-"admin"}
 
+    # Check if database is deployed and ready
+    log_info "Checking for Keycloak database..."
+    if kubectl get postgresql keycloak-db -n keycloak &>/dev/null; then
+        log_info "Waiting for database pod to be ready..."
+        kubectl wait --for=condition=Ready pod -l application=spilo,cluster-name=keycloak-db -n keycloak --timeout=300s || {
+            log_error "Database pod failed to become ready"
+            return 1
+        }
+        log_success "Database is ready"
+    else
+        log_warn "Database not found. Deploying database first..."
+        deploy_keycloak_db || {
+            log_error "Failed to deploy database"
+            return 1
+        }
+    fi
+
     # Phase 1: Deploy Operator + CRDs only (disable instance)
     helm upgrade --install keycloak "$CHART_DIR" \
         --namespace keycloak \
@@ -519,6 +536,27 @@ deploy_keycloak() {
     log_success "Keycloak deployed successfully"
     log_info "Access Keycloak at: https://keycloak.$NIP_IO_DOMAIN"
     log_info "Admin user: admin"
+}
+
+deploy_test_page() {
+    log_step "Deploying test page..."
+
+    check_required_tools kubectl
+    check_kubectl_context
+
+    # Apply test page manifest
+    kubectl apply -f test/nginx-test.yaml
+
+    # Wait for pod to be ready
+    wait_for_pods "test" "app=nginx-test" 60
+
+    # Get ingress IP
+    INGRESS_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+
+    log_success "Test page deployed successfully"
+    if [ -n "$INGRESS_IP" ]; then
+        log_info "Access test page at: https://$INGRESS_IP.nip.io"
+    fi
 }
 
 deploy_dashboard_api() {
@@ -836,6 +874,9 @@ case "$COMMAND" in
         ;;
     keycloak)
         deploy_keycloak
+        ;;
+    test-page)
+        deploy_test_page
         ;;
     dashboard-api)
         deploy_dashboard_api

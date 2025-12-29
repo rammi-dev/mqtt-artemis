@@ -35,7 +35,7 @@ keycloak:
   ingress:
     enabled: true
     hostname: ""  # Set via --set during deployment
-    issuer: letsencrypt-staging
+    issuer: letsencrypt-prod
   
   # Resource limits
   resources:

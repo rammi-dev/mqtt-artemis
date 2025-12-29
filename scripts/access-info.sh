@@ -49,8 +49,40 @@ if [ "$INGRESS_IP" != "N/A" ]; then
     echo "  NiFi:       https://nifi.$NIP_IO_DOMAIN"
     echo "  Dagster:    https://dagster.$NIP_IO_DOMAIN"
     echo "  Dashboard:  https://api.$NIP_IO_DOMAIN"
+    echo "  Keycloak:   https://keycloak.$NIP_IO_DOMAIN/admin/"
     echo ""
 fi
+
+# =============================================================================
+# Credentials
+# =============================================================================
+
+print_section "Application Credentials"
+
+echo "Keycloak Admin:"
+echo "  Username: admin"
+echo "  Password: admin"
+echo "  URL: https://keycloak.$NIP_IO_DOMAIN/admin/"
+echo ""
+
+echo "Grafana:"
+echo "  Username: admin"
+echo "  Password: admin-secret"
+echo ""
+
+echo "ClickHouse:"
+echo "  Username: admin"
+echo "  Password: password"
+echo ""
+
+echo "Artemis MQTT:"
+echo "  Username: admin"
+echo "  Password: admin"
+echo ""
+
+echo "Redis:"
+echo "  Password: redis-secret"
+echo ""
 
 # =============================================================================
 # Port Forward Commands

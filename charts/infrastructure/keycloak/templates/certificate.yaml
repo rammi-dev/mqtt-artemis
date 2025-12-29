@@ -1,0 +1,14 @@
+{{- if .Values.keycloak.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: keycloak-tls
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: keycloak-tls
+  issuerRef:
+    name: {{ .Values.keycloak.ingress.issuer }}
+    kind: ClusterIssuer
+  dnsNames:
+  - {{ .Values.keycloak.ingress.hostname }}
+{{- end }}

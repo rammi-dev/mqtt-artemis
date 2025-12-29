@@ -53,6 +53,9 @@ terraform apply
 **Deploys:**
 - `cert-manager` → namespace: cert-manager
 - `ingress-nginx` → namespace: ingress-nginx
+- `postgres-operator` → namespace: postgres-operator
+- `keycloak-db` → namespace: keycloak (PostgreSQL cluster)
+- `keycloak` → namespace: keycloak (IAM)
 
 **Usage:**
 ```bash
@@ -60,6 +63,9 @@ terraform apply
 # Or manually:
 helm install cert-manager charts/infrastructure/cert-manager/ -n cert-manager --create-namespace
 helm install ingress-nginx charts/infrastructure/ingress-nginx/ -n ingress-nginx --create-namespace
+helm install postgres-operator charts/infrastructure/postgres-operator/ -n postgres-operator --create-namespace
+helm install keycloak-db charts/infrastructure/keycloak-db/ -n keycloak --create-namespace
+helm install keycloak charts/infrastructure/keycloak/ -n keycloak --create-namespace
 ```
 
 ### 3. Analytics Helm Chart
@@ -87,7 +93,10 @@ This does everything:
 2. ✅ Configure kubectl
 3. ✅ Deploy cert-manager
 4. ✅ Deploy ingress-nginx
-5. ✅ Deploy edge-analytics
+5. ✅ Deploy postgres-operator (for Keycloak)
+6. ✅ Deploy keycloak-db (PostgreSQL)
+7. ✅ Deploy keycloak (IAM)
+8. ✅ Deploy edge-analytics
 
 ### Option 2: Manual Steps
 ```bash
@@ -122,6 +131,18 @@ GKE Cluster (edge-analytics)
 │   └── ingress-nginx (Helm)
 │       ├── Controller
 │       └── LoadBalancer Service (static IP)
+│
+├── Namespace: postgres-operator
+│   └── postgres-operator (Helm)
+│       └── Postgres Operator (manages PostgreSQL clusters)
+│
+├── Namespace: keycloak
+│   ├── keycloak-db (PostgreSQL cluster via Postgres Operator)
+│   └── keycloak (Helm)
+│       ├── Keycloak Operator
+│       ├── Keycloak Instance (managed by operator)
+│       ├── Ingress (managed by Helm)
+│       └── Certificate (managed by cert-manager)
 │
 └── Namespace: edge
     └── edge-analytics (Helm)

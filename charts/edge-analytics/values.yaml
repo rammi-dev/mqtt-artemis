@@ -11,7 +11,7 @@ artemis:
     enabled: false
   ingress:
     enabled: true
-    issuer: letsencrypt-staging
+    issuer: letsencrypt-prod
     hostName: artemis
 
 clickhouse:
