@@ -10,7 +10,7 @@ scripts/
 │   └── common.sh           # Shared library functions
 ├── deploy-gke.sh          # Main deployment script (modular)
 ├── access-info.sh         # Service access information
-├── port-forward-all.sh    # Start/stop all port forwards
+├── port-forward.sh        # Start/stop all port forwards
 └── deploy-legacy.sh       # Legacy deployment script (deprecated)
 ```
 
@@ -91,13 +91,13 @@ Display access information for all deployed services.
 - API endpoints
 - Cluster status
 
-### port-forward-all.sh
+### port-forward.sh
 
 Start/stop port forwards for all services in the edge namespace.
 
 **Usage:**
 ```bash
-./scripts/port-forward-all.sh [command]
+./scripts/port-forward.sh [command]
 ```
 
 **Commands:**
@@ -123,13 +123,13 @@ Start/stop port forwards for all services in the edge namespace.
 **Examples:**
 ```bash
 # Start all port forwards
-./scripts/port-forward-all.sh
+./scripts/port-forward.sh
 
 # Check what's running
-./scripts/port-forward-all.sh status
+./scripts/port-forward.sh status
 
 # Stop everything
-./scripts/port-forward-all.sh stop
+./scripts/port-forward.sh stop
 ```
 
 ## Library

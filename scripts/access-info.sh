@@ -20,9 +20,23 @@ check_required_tools kubectl
 # Check kubectl context
 check_kubectl_context
 
-# Get Terraform outputs
-INGRESS_IP=$(get_terraform_output "ingress_ip" 2>/dev/null || echo "N/A")
-NIP_IO_DOMAIN=$(get_terraform_output "nip_io_domain" 2>/dev/null || echo "N/A")
+# Get ingress IP dynamically from cluster (handles restarts where IP may change)
+get_ingress_ip() {
+    # Try ingress-nginx service first
+    local ip=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+    if [ -z "$ip" ]; then
+        # Fallback to external IP
+        ip=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.externalIPs[0]}' 2>/dev/null)
+    fi
+    echo "${ip:-N/A}"
+}
+
+INGRESS_IP=$(get_ingress_ip)
+if [ "$INGRESS_IP" != "N/A" ]; then
+    NIP_IO_DOMAIN="${INGRESS_IP}.nip.io"
+else
+    NIP_IO_DOMAIN="N/A"
+fi
 
 print_header "Edge Analytics - Access Information"
 
@@ -43,6 +57,13 @@ echo "Ingress IP: $INGRESS_IP"
 echo "Domain: $NIP_IO_DOMAIN"
 echo ""
 
+# Get all ingress resources
+echo "Ingress Resources:"
+kubectl get ingress -A --no-headers 2>/dev/null | while read ns name class hosts address ports age; do
+    echo "  $name ($ns): $hosts -> $address"
+done
+echo ""
+
 if [ "$INGRESS_IP" != "N/A" ]; then
     echo "Service URLs (via Ingress):"
     echo "  Grafana:    https://grafana.$NIP_IO_DOMAIN"
@@ -50,6 +71,7 @@ if [ "$INGRESS_IP" != "N/A" ]; then
     echo "  Dagster:    https://dagster.$NIP_IO_DOMAIN"
     echo "  Dashboard:  https://api.$NIP_IO_DOMAIN"
     echo "  Keycloak:   https://keycloak.$NIP_IO_DOMAIN/admin/"
+    echo "  MinIO:      https://minio.$NIP_IO_DOMAIN"
     echo ""
 fi
 
