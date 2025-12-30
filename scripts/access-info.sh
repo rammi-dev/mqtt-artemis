@@ -66,12 +66,13 @@ echo ""
 
 if [ "$INGRESS_IP" != "N/A" ]; then
     echo "Service URLs (via Ingress):"
-    echo "  Grafana:    https://grafana.$NIP_IO_DOMAIN"
-    echo "  NiFi:       https://nifi.$NIP_IO_DOMAIN"
-    echo "  Dagster:    https://dagster.$NIP_IO_DOMAIN"
-    echo "  Dashboard:  https://api.$NIP_IO_DOMAIN"
-    echo "  Keycloak:   https://keycloak.$NIP_IO_DOMAIN/admin/"
-    echo "  MinIO:      https://minio.$NIP_IO_DOMAIN"
+    echo "  Grafana:      https://grafana.$NIP_IO_DOMAIN"
+    echo "  NiFi:         https://nifi.$NIP_IO_DOMAIN"
+    echo "  Dagster:      https://dagster.$NIP_IO_DOMAIN"
+    echo "  Dashboard:    https://api.$NIP_IO_DOMAIN"
+    echo "  Keycloak:     https://keycloak.$NIP_IO_DOMAIN/admin/"
+    echo "  MinIO:        https://minio.$NIP_IO_DOMAIN"
+    echo "  Load Tester:  https://loadtest.$NIP_IO_DOMAIN/docs"
     echo ""
 fi
 
@@ -144,6 +145,12 @@ echo "Redis:"
 echo "  kubectl port-forward -n edge svc/edge-analytics-redis-master 6379:6379"
 echo "  Access: localhost:6379"
 echo "  Password: redis-secret"
+echo ""
+
+echo "IoT Load Tester:"
+echo "  kubectl port-forward -n edge svc/iot-load-tester 8090:8090"
+echo "  Access: http://localhost:8090"
+echo "  Docs: http://localhost:8090/docs"
 echo ""
 
 echo "Prometheus:"

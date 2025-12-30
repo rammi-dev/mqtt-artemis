@@ -7,11 +7,14 @@ Modular deployment and utility scripts for the Edge Analytics platform.
 ```
 scripts/
 ├── lib/
-│   └── common.sh           # Shared library functions
-├── deploy-gke.sh          # Main deployment script (modular)
-├── access-info.sh         # Service access information
-├── port-forward.sh        # Start/stop all port forwards
-└── deploy-legacy.sh       # Legacy deployment script (deprecated)
+│   └── common.sh                    # Shared library functions
+├── iot-load-tester/
+│   ├── build.sh                     # Build & push IoT Load Tester image
+│   └── deploy.sh                    # Deploy IoT Load Tester to GKE
+├── deploy-gke.sh                    # Main deployment script (modular)
+├── access-info.sh                   # Service access information
+├── port-forward.sh                  # Start/stop all port forwards
+└── deploy-legacy.sh                 # Legacy deployment script (deprecated)
 ```
 
 ## Main Scripts

@@ -42,6 +42,7 @@ SERVICES=(
     "clickhouse:8123:clickhouse-telemetry-db:8123:edge"
     "redis:6379:edge-analytics-redis-master:6379:edge"
     "prometheus:9090:edge-analytics-prometheus-server:80:edge"
+    "iot-load-tester:8090:iot-load-tester:8090:edge"
     # Keycloak namespace services
     "keycloak:8180:keycloak-service:8080:keycloak"
     # MinIO services
@@ -77,6 +78,7 @@ Services:
   clickhouse       localhost:8123  ClickHouse HTTP
   redis            localhost:6379  Redis
   prometheus       localhost:9090  Prometheus
+  iot-load-tester  localhost:8090  IoT Load Tester API
   keycloak         localhost:8180  Keycloak
   minio-console    localhost:9001  MinIO Console
   minio-api        localhost:9000  MinIO API

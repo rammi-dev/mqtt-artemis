@@ -1,0 +1,62 @@
+# IoT Load Tester configuration
+replicaCount: 1
+
+image:
+  repository: iot-load-tester
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8090
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  hosts:
+    - host: loadtest.{{ .Values.domain | default "example.com" }}
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: loadtest-tls
+      hosts:
+        - loadtest.{{ .Values.domain | default "example.com" }}
+
+# Dynamic domain (set via --set domain=<ip>.nip.io)
+domain: ""
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Artemis broker configuration
+artemis:
+  mqttHost: artemis-mqtt-0-svc.edge
+  mqttPort: 1883
+  amqpHost: artemis-amqp-0-svc.edge
+  amqpPort: 5672
+
+# Safety limits
+safetyLimits:
+  maxDevices: 100000
+  maxConnectRate: 2000
+  maxPublishRate: 50000
+  maxMessageSize: 1048576
+  maxConcurrentJobs: 5
+  maxRuntimeSeconds: 3600
+
+serviceAccount:
+  create: true
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8090"
+  prometheus.io/path: "/metrics"
