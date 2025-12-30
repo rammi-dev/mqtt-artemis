@@ -53,7 +53,7 @@ class TestConfig(BaseModel):
     
     # Device settings
     devices: int = Field(default=10, ge=1, le=100000)
-    connectRate: int = Field(default=100, ge=1, le=2000)
+    connectRate: int = Field(default=50, ge=1, le=2000)
     
     # Topic settings
     topicPattern: str = Field(default="devices/{deviceId}/telemetry")
