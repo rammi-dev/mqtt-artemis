@@ -39,6 +39,11 @@ ingress-nginx:
     # Configuration options
     config:
       use-proxy-protocol: "false"
+      proxy-buffer-size: "16k"
+      proxy-buffers: "4 16k"
+      client-header-buffer-size: "32k"
+      large-client-header-buffers: "4 32k"
+      allow-snippet-annotations: "true"
       # Add custom nginx configurations here
       # proxy-body-size: "100m"
       # ssl-protocols: "TLSv1.2 TLSv1.3"

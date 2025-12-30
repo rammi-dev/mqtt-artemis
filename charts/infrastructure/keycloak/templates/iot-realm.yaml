@@ -1,0 +1,78 @@
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: iot-realm
+  labels:
+    app: keycloak
+spec:
+  keycloakCRName: keycloak
+  realm:
+    realm: iot
+    enabled: true
+    displayName: IoT Load Testing
+    sslRequired: external
+    registrationAllowed: false
+    loginWithEmailAllowed: true
+    duplicateEmailsAllowed: false
+    resetPasswordAllowed: false
+    editUsernameAllowed: false
+    
+    roles:
+      realm:
+        - name: admin
+          description: Administrator with full access
+        - name: user
+          description: Standard user with read/execute access
+    
+    clients:
+      - clientId: iot-load-tester
+        name: IoT Load Tester
+        description: Load testing application
+        enabled: true
+        publicClient: false
+        secret: "test-secret"
+        standardFlowEnabled: true
+        implicitFlowEnabled: false
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: false
+        # For development/simplicity, allowing all redirects. In prod, restrict this.
+        rootUrl: ""
+        redirectUris:
+          - "https://loadtest.{{ .Values.domain }}/*"
+          - "https://auth.{{ .Values.domain }}/*"
+          - "http://localhost:8090/*"
+        webOrigins:
+          - "*"
+        fullScopeAllowed: true
+        defaultClientScopes:
+          - web-origins
+          - acr
+          - roles
+          - profile
+          - email
+    
+    users:
+      - username: admin
+        enabled: true
+        firstName: Admin
+        lastName: User
+        email: admin@example.com
+        credentials:
+          - type: password
+            value: admin
+            temporary: false
+        realmRoles:
+          - admin
+          - user
+      
+      - username: testuser
+        enabled: true
+        firstName: Test
+        lastName: User
+        email: testuser@example.com
+        credentials:
+          - type: password
+            value: test
+            temporary: false
+        realmRoles:
+          - user

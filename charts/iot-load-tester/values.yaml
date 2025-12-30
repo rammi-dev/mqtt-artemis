@@ -15,6 +15,13 @@ ingress:
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-staging
+    # Auth via OAuth2 Proxy (Shared Component)
+    # Auth Check: Internal Cluster URL (faster, no hair-pinning)
+    nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.ingress-nginx.svc.cluster.local/oauth2/auth"
+    # Auth Sign-in: External Redirect to dedicated Auth Domain
+    nginx.ingress.kubernetes.io/auth-signin: "https://auth.{{ .Values.domain }}/oauth2/start?rd=https://$host$escaped_request_uri"
+    # buffer size fix for large tokens
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
   hosts:
     - host: loadtest.{{ .Values.domain | default "example.com" }}
       paths:
@@ -60,3 +67,4 @@ podAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "8090"
   prometheus.io/path: "/metrics"
+

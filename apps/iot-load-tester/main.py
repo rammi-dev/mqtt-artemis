@@ -2,14 +2,16 @@
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Annotated
 
 from models import TestConfig, JobInfo, JobCreateResponse, ErrorResponse, Protocol, TestType, BurstConfig
 from job_manager import job_manager
 from metrics import get_metrics, get_content_type, VALIDATION_REJECTIONS
-
+# security imports removed
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,11 +21,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="IoT Load Testing Tool",
-    description="REST-driven load-testing platform for Apache Artemis focused on IoT protocols",
+    title="IoT Load Tester",
+    description="High-scale load testing tool for MQTT/AMQP",
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Redirect root to docs
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/docs")
+
+# Prometheus Metrics
+instrumentator = Instrumentator().instrument(app).expose(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,7 +45,7 @@ app.add_middleware(
 
 
 # =============================================================================
-# Simplified request models for each test type
+# Simplifed request models for each test type
 # =============================================================================
 
 class TelemetryTestRequest(BaseModel):
@@ -223,7 +233,7 @@ async def start_test(config: TestConfig) -> JobCreateResponse:
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint (Public)."""
     return {"status": "healthy", "running_jobs": job_manager.running_count}
 
 

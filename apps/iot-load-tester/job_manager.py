@@ -92,20 +92,22 @@ class JobManager:
             # Get the directory containing locustfile.py
             locust_dir = os.path.dirname(os.path.abspath(__file__))
             
-            # Start Locust process
-            job.process = subprocess.Popen(
-                cmd,
+            # Start Locust process (NON-BLOCKING)
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
                 cwd=locust_dir,
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
+            job.process = process
             
             # Wait for completion or timeout
             try:
-                job.process.wait(timeout=job.config.runtimeSeconds + 60)
+                # Wait with timeout
+                await asyncio.wait_for(process.wait(), timeout=job.config.runtimeSeconds + 60)
                 
-                if job.process.returncode == 0:
+                if process.returncode == 0:
                     job.status = JobStatus.COMPLETED
                     JOBS_COMPLETED.labels(
                         protocol=job.config.protocol.value,
@@ -113,15 +115,22 @@ class JobManager:
                     ).inc()
                 else:
                     job.status = JobStatus.FAILED
-                    stderr = job.process.stderr.read().decode() if job.process.stderr else ""
-                    job.error = f"Exit code {job.process.returncode}: {stderr[:500]}"
+                    # Read stderr asynchronously
+                    stderr_data = await process.stderr.read()
+                    stderr = stderr_data.decode() if stderr_data else ""
+                    job.error = f"Exit code {process.returncode}: {stderr[:500]}"
                     JOBS_FAILED.labels(
                         protocol=job.config.protocol.value,
                         reason="exit_error"
                     ).inc()
                     
-            except subprocess.TimeoutExpired:
-                job.process.kill()
+            except asyncio.TimeoutError:
+                try:
+                    process.kill()
+                    await process.wait() # Reap zombie
+                except ProcessLookupError:
+                    pass
+                
                 job.status = JobStatus.FAILED
                 job.error = "Job timed out"
                 JOBS_FAILED.labels(

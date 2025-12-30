@@ -288,6 +288,71 @@ deploy_infrastructure() {
 }
 
 # =============================================================================
+# Deploy OAuth2 Proxy
+# =============================================================================
+
+deploy_oauth2_proxy() {
+    log_step "Deploying OAuth2 Proxy..."
+
+    check_required_tools helm kubectl
+    check_kubectl_context
+
+    local CHART_DIR="$PROJECT_ROOT/charts/infrastructure/oauth2-proxy"
+
+    # Update Helm dependencies
+    log_info "Updating Helm dependencies for oauth2-proxy..."
+    pushd "$CHART_DIR" > /dev/null
+    helm dependency update
+    popd > /dev/null
+
+    # Get nip.io domain
+    NIP_IO_DOMAIN=$(get_terraform_output "nip_io_domain")
+    log_info "Using domain: $NIP_IO_DOMAIN"
+
+    # Create dynamic values file
+    cat <<EOF > /tmp/oauth2-proxy-values.yaml
+oauth2-proxy:
+  ingress:
+    hosts:
+      - "auth.${NIP_IO_DOMAIN}"
+    tls:
+      - secretName: loadtest-tls
+        hosts:
+          - "auth.${NIP_IO_DOMAIN}"
+  config:
+    # Need to override this via config or extraEnv
+    configFile: |-
+      email_domains = [ "*" ]
+      upstreams = [ "file:///dev/null" ]
+      provider = "oidc"
+      oidc_issuer_url = "https://keycloak.${NIP_IO_DOMAIN}/realms/iot"
+      redirect_url = "https://auth.${NIP_IO_DOMAIN}/oauth2/callback"
+      insecure_oidc_allow_unverified_email = true
+      skip_provider_button = true
+      cookie_secure = false
+      cookie_domains = [ ".${NIP_IO_DOMAIN}" ]
+      whitelist_domains = [ ".${NIP_IO_DOMAIN}" ]
+
+  extraEnv:
+    - name: OAUTH2_PROXY_OIDC_ISSUER_URL
+      value: "https://keycloak.${NIP_IO_DOMAIN}/realms/iot"
+    - name: OAUTH2_PROXY_SSL_INSECURE_SKIP_VERIFY
+      value: "true"
+EOF
+
+    helm upgrade --install oauth2-proxy "$CHART_DIR" \
+        --namespace ingress-nginx \
+        --values /tmp/oauth2-proxy-values.yaml \
+        --set domain=$NIP_IO_DOMAIN \
+        --wait \
+        --timeout 5m
+    
+    rm /tmp/oauth2-proxy-values.yaml
+
+    log_success "OAuth2 Proxy deployed successfully"
+}
+
+# =============================================================================
 # Deploy Analytics
 # =============================================================================
 
@@ -528,6 +593,7 @@ deploy_keycloak() {
         --set keycloak.enabled=true \
         --set keycloak.adminPassword=$ADMIN_PASSWORD \
         --set keycloak.ingress.hostname=keycloak.$NIP_IO_DOMAIN \
+        --set domain=$NIP_IO_DOMAIN \
         --wait \
         --timeout 10m
 
@@ -536,6 +602,16 @@ deploy_keycloak() {
     log_success "Keycloak deployed successfully"
     log_info "Access Keycloak at: https://keycloak.$NIP_IO_DOMAIN"
     log_info "Admin user: admin"
+
+    log_step "Force-updating Keycloak Client Config..."
+    
+    if [ -f "$PROJECT_ROOT/scripts/fix-keycloak-config.sh" ]; then
+        "$PROJECT_ROOT/scripts/fix-keycloak-config.sh" "$NIP_IO_DOMAIN" "$ADMIN_PASSWORD" || {
+            log_warn "Failed to auto-configure Keycloak client. You may need to do it manually."
+        }
+    else
+        log_warn "Fix script not found at $PROJECT_ROOT/scripts/fix-keycloak-config.sh"
+    fi
 }
 
 deploy_test_page() {
@@ -874,6 +950,9 @@ case "$COMMAND" in
         ;;
     keycloak)
         deploy_keycloak
+        ;;
+    oauth2-proxy)
+        deploy_oauth2_proxy
         ;;
     test-page)
         deploy_test_page
