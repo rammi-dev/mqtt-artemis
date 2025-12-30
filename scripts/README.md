@@ -10,6 +10,7 @@ scripts/
 │   └── common.sh           # Shared library functions
 ├── deploy-gke.sh          # Main deployment script (modular)
 ├── access-info.sh         # Service access information
+├── port-forward-all.sh    # Start/stop all port forwards
 └── deploy-legacy.sh       # Legacy deployment script (deprecated)
 ```
 
@@ -89,6 +90,47 @@ Display access information for all deployed services.
 - Quick commands
 - API endpoints
 - Cluster status
+
+### port-forward-all.sh
+
+Start/stop port forwards for all services in the edge namespace.
+
+**Usage:**
+```bash
+./scripts/port-forward-all.sh [command]
+```
+
+**Commands:**
+- `start` - Start all port forwards (default)
+- `stop` - Stop all port forwards
+- `status` - Check status of port forwards
+- `restart` - Restart all port forwards
+
+**Port Mappings:**
+| Service | Local Port | URL |
+|---------|-----------|-----|
+| NiFi | 8080 | http://localhost:8080/nifi |
+| Grafana | 3000 | http://localhost:3000 |
+| Dagster | 3001 | http://localhost:3001 |
+| Dashboard | 8000 | http://localhost:8000 |
+| ClickHouse | 8123 | http://localhost:8123 |
+| Redis | 6379 | localhost:6379 |
+| Prometheus | 9090 | http://localhost:9090 |
+| Keycloak | 8180 | http://localhost:8180 |
+| MinIO Console | 9001 | http://localhost:9001 |
+| MinIO API | 9000 | http://localhost:9000 |
+
+**Examples:**
+```bash
+# Start all port forwards
+./scripts/port-forward-all.sh
+
+# Check what's running
+./scripts/port-forward-all.sh status
+
+# Stop everything
+./scripts/port-forward-all.sh stop
+```
 
 ## Library
 
