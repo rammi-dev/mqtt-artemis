@@ -1,7 +1,7 @@
 """FastAPI application for IoT Load Testing."""
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Depends, Request
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -11,7 +11,7 @@ from typing import Optional, Annotated
 from models import TestConfig, JobInfo, JobCreateResponse, ErrorResponse, Protocol, TestType, BurstConfig
 from job_manager import job_manager
 from metrics import get_metrics, get_content_type, VALIDATION_REJECTIONS
-# security imports removed
+from security import require_roles, require_admin
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,6 +32,21 @@ app = FastAPI(
 async def root():
     return RedirectResponse(url="/docs")
 
+# Logout endpoint - redirects to OAuth2 Proxy sign_out
+@app.get("/logout", tags=["Auth"])
+async def logout(request: Request):
+    """Logout and clear session.
+    
+    Redirects to OAuth2 Proxy sign_out endpoint which clears cookies
+    and redirects back to the login page.
+    """
+    # Get the host from request to build the auth URL
+    host = request.headers.get("host", "")
+    # Extract domain (e.g., 35.206.88.67.nip.io from loadtest.35.206.88.67.nip.io)
+    domain = ".".join(host.split(".")[1:]) if "." in host else host
+    # Redirect to auth domain's sign_out
+    return RedirectResponse(url=f"https://auth.{domain}/oauth2/sign_out?rd=https://{host}/")
+
 # Prometheus Metrics
 instrumentator = Instrumentator().instrument(app).expose(app)
 
@@ -42,6 +57,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Debug endpoint to see what headers OAuth2 Proxy sends
+@app.get("/debug/headers", tags=["Debug"])
+async def debug_headers(request: Request):
+    """Debug: Show auth headers received from OAuth2 Proxy."""
+    return {
+        "x_auth_request_user": request.headers.get("X-Auth-Request-User"),
+        "x_auth_request_groups": request.headers.get("X-Auth-Request-Groups"),
+        "x_auth_request_email": request.headers.get("X-Auth-Request-Email"),
+        "authorization_present": bool(request.headers.get("Authorization")),
+    }
 
 
 # =============================================================================
@@ -245,7 +271,8 @@ async def metrics():
 
 # --- Test Type Endpoints ---
 
-@app.post("/tests/telemetry", response_model=JobCreateResponse, tags=["Test Types"])
+@app.post("/tests/telemetry", response_model=JobCreateResponse, tags=["Test Types"],
+          dependencies=[Depends(require_roles("test-telemetry"))])
 async def create_telemetry_test(request: TelemetryTestRequest):
     """Start a **Telemetry** test.
     
@@ -274,7 +301,8 @@ async def create_telemetry_test(request: TelemetryTestRequest):
     return await start_test(config)
 
 
-@app.post("/tests/burst", response_model=JobCreateResponse, tags=["Test Types"])
+@app.post("/tests/burst", response_model=JobCreateResponse, tags=["Test Types"],
+          dependencies=[Depends(require_admin)])
 async def create_burst_test(request: BurstTestRequest):
     """Start a **Burst Traffic** test.
     
@@ -300,7 +328,8 @@ async def create_burst_test(request: BurstTestRequest):
     return await start_test(config)
 
 
-@app.post("/tests/churn", response_model=JobCreateResponse, tags=["Test Types"])
+@app.post("/tests/churn", response_model=JobCreateResponse, tags=["Test Types"],
+          dependencies=[Depends(require_admin)])
 async def create_churn_test(request: ChurnTestRequest):
     """Start a **Connection Churn** test.
     
@@ -326,7 +355,8 @@ async def create_churn_test(request: ChurnTestRequest):
     return await start_test(config)
 
 
-@app.post("/tests/retained", response_model=JobCreateResponse, tags=["Test Types"])
+@app.post("/tests/retained", response_model=JobCreateResponse, tags=["Test Types"],
+          dependencies=[Depends(require_admin)])
 async def create_retained_test(request: RetainedTestRequest):
     """Start a **Retained Messages** test.
     
@@ -352,7 +382,8 @@ async def create_retained_test(request: RetainedTestRequest):
     return await start_test(config)
 
 
-@app.post("/tests/command", response_model=JobCreateResponse, tags=["Test Types"])
+@app.post("/tests/command", response_model=JobCreateResponse, tags=["Test Types"],
+          dependencies=[Depends(require_admin)])
 async def create_command_test(request: CommandTestRequest):
     """Start a **Command & Control** test.
     
@@ -378,7 +409,8 @@ async def create_command_test(request: CommandTestRequest):
     return await start_test(config)
 
 
-@app.post("/tests/offline", response_model=JobCreateResponse, tags=["Test Types"])
+@app.post("/tests/offline", response_model=JobCreateResponse, tags=["Test Types"],
+          dependencies=[Depends(require_admin)])
 async def create_offline_test(request: OfflineTestRequest):
     """Start an **Offline Device Backlog** test.
     
@@ -405,7 +437,8 @@ async def create_offline_test(request: OfflineTestRequest):
     return await start_test(config)
 
 
-@app.post("/tests/lwt", response_model=JobCreateResponse, tags=["Test Types"])
+@app.post("/tests/lwt", response_model=JobCreateResponse, tags=["Test Types"],
+          dependencies=[Depends(require_admin)])
 async def create_lwt_test(request: LwtTestRequest):
     """Start a **Last Will & Testament (LWT)** test.
     
@@ -430,7 +463,8 @@ async def create_lwt_test(request: LwtTestRequest):
     return await start_test(config)
 
 
-@app.post("/tests/amqp", response_model=JobCreateResponse, tags=["Test Types"])
+@app.post("/tests/amqp", response_model=JobCreateResponse, tags=["Test Types"],
+          dependencies=[Depends(require_admin)])
 async def create_amqp_test(request: AmqpTestRequest):
     """Start an **AMQP 1.0** test.
     
@@ -457,19 +491,22 @@ async def create_amqp_test(request: AmqpTestRequest):
 
 # --- Generic Endpoints ---
 
-@app.post("/tests", response_model=JobCreateResponse, responses={400: {"model": ErrorResponse}}, tags=["Generic"])
+@app.post("/tests", response_model=JobCreateResponse, responses={400: {"model": ErrorResponse}}, tags=["Generic"],
+          dependencies=[Depends(require_admin)])
 async def create_test(config: TestConfig):
     """Start a custom load test with full configuration options."""
     return await start_test(config)
 
 
-@app.get("/tests", response_model=list[JobInfo], tags=["Jobs"])
+@app.get("/tests", response_model=list[JobInfo], tags=["Jobs"],
+         dependencies=[Depends(require_roles("test-telemetry"))])
 async def list_tests():
     """List all load tests."""
     return await job_manager.list_jobs()
 
 
-@app.get("/tests/{job_id}", response_model=JobInfo, responses={404: {"model": ErrorResponse}}, tags=["Jobs"])
+@app.get("/tests/{job_id}", response_model=JobInfo, responses={404: {"model": ErrorResponse}}, tags=["Jobs"],
+         dependencies=[Depends(require_roles("test-telemetry"))])
 async def get_test(job_id: str):
     """Get status of a load test."""
     job = await job_manager.get_job(job_id)
@@ -478,7 +515,8 @@ async def get_test(job_id: str):
     return job.to_info()
 
 
-@app.delete("/tests/{job_id}", responses={404: {"model": ErrorResponse}}, tags=["Jobs"])
+@app.delete("/tests/{job_id}", responses={404: {"model": ErrorResponse}}, tags=["Jobs"],
+            dependencies=[Depends(require_admin)])
 async def stop_test(job_id: str):
     """Stop a running load test."""
     stopped = await job_manager.stop_job(job_id)

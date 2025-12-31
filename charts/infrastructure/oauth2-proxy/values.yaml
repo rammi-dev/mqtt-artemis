@@ -1,31 +1,42 @@
 oauth2-proxy:
   config:
     clientID: "iot-load-tester"
-    clientSecret: "test-secret"  # Using a fixed secret for simplicity/demo
-    cookieSecret: "V2hhdGV2ZXJTZWN1cmUtMzJDaGFycy0t" # 32 chars specific
+    clientSecret: "test-secret"
+    cookieSecret: "V2hhdGV2ZXJTZWN1cmUtMzJDaGFycy0t"  # 32 chars base64
     configFile: |-
       email_domains = [ "*" ]
       upstreams = [ "file:///dev/null" ]
       provider = "oidc"
-      # OIDC Config will be injected via extraEnv
       oidc_issuer_url = "https://keycloak.{{ .Values.domain }}/realms/iot"
       skip_provider_button = true
-      cookie_secure = false  # For testing with self-signed/HTTP
+      
+      # Short-lived cookies (1 hour) - prevents long auto-login
+      cookie_secure = true
+      cookie_expire = "1h"
       cookie_domains = [ ".{{ .Values.domain }}" ]
       whitelist_domains = [ ".{{ .Values.domain }}" ]
+      
+      # Pass authentication info to backends
+      set_xauthrequest = true
+      pass_access_token = true
+      pass_authorization_header = true
+      
+      # OIDC settings
+      insecure_oidc_allow_unverified_email = true
+      oidc_groups_claim = "roles"
   
   ingress:
     enabled: true
     className: nginx
     path: /oauth2
-    # Hosts and TLS will be set via --set or generated values file in deploy script
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts: []
     tls: []
 
   extraEnv:
-    # OIDC Issuer URL will be set via deploy script
-    # - name: OAUTH2_PROXY_OIDC_ISSUER_URL
-    #   value: "..."
-    # Using insecure skip verify for internal communication if certs are self-signed
     - name: OAUTH2_PROXY_SSL_INSECURE_SKIP_VERIFY
       value: "true"
+
+# Domain for template substitution (set via --set domain=...)
+domain: ""

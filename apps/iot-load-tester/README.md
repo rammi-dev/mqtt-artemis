@@ -9,6 +9,43 @@ REST-driven load-testing platform focused on IoT protocols (MQTT, AMQP) with rea
 - **REST API**: Start/stop/monitor tests via FastAPI
 - **Metrics**: Prometheus-compatible metrics endpoint
 - **Safety Limits**: Server-side validation and limits
+- **Role-Based Access Control**: Admin and test-telemetry roles
+
+## Authentication & Authorization
+
+The API uses Keycloak for authentication via OAuth2 Proxy. Access is controlled by roles:
+
+### Users
+
+| Username | Password | Role | Access |
+|----------|----------|------|--------|
+| `admin` | `admin` | admin | Full access to all endpoints |
+| `test` | `test` | test-telemetry | Telemetry tests and viewing results only |
+
+### Endpoint Permissions
+
+| Endpoint | Method | admin | test-telemetry |
+|----------|--------|-------|----------------|
+| `/health` | GET | ✅ | ✅ (public) |
+| `/metrics` | GET | ✅ | ✅ (public) |
+| `/tests/telemetry` | POST | ✅ | ✅ |
+| `/tests` | GET | ✅ | ✅ |
+| `/tests/{job_id}` | GET | ✅ | ✅ |
+| `/tests/burst` | POST | ✅ | ❌ |
+| `/tests/churn` | POST | ✅ | ❌ |
+| `/tests/retained` | POST | ✅ | ❌ |
+| `/tests/command` | POST | ✅ | ❌ |
+| `/tests/offline` | POST | ✅ | ❌ |
+| `/tests/lwt` | POST | ✅ | ❌ |
+| `/tests/amqp` | POST | ✅ | ❌ |
+| `/tests` | POST | ✅ | ❌ |
+| `/tests/{job_id}` | DELETE | ✅ | ❌ |
+
+### Session Behavior
+
+- Sessions expire when the browser is closed (session cookies)
+- 30 minute idle timeout, 8 hour maximum session
+- Users must log in again after closing the browser
 
 ## Quick Start
 

@@ -22,6 +22,24 @@ After deployment, access Keycloak at:
 - **Admin User:** `admin`
 - **Admin Password:** Set during deployment (default: `admin`)
 
+### IoT Realm (Auto-configured via Helm)
+
+The `iot` realm is automatically created with the following configuration:
+
+| Username | Password | Role | Description |
+|----------|----------|------|-------------|
+| `admin` | `admin` | admin | Full access to all IoT Load Tester endpoints |
+| `test` | `test` | test-telemetry | Access to telemetry tests and viewing results |
+
+**Roles:**
+- `admin` - Full access to all endpoints
+- `test-telemetry` - Can run telemetry tests and view test results
+
+**Session Settings:**
+- Idle timeout: 30 minutes
+- Max session: 8 hours
+- Access token lifetime: 5 minutes
+
 ## Architecture
 
 This chart deploys Keycloak using a **two-phase approach**:

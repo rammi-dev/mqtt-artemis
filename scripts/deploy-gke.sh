@@ -309,7 +309,7 @@ deploy_oauth2_proxy() {
     NIP_IO_DOMAIN=$(get_terraform_output "nip_io_domain")
     log_info "Using domain: $NIP_IO_DOMAIN"
 
-    # Create dynamic values file
+    # Create dynamic values file with RBAC and session cookie settings
     cat <<EOF > /tmp/oauth2-proxy-values.yaml
 oauth2-proxy:
   ingress:
@@ -320,7 +320,6 @@ oauth2-proxy:
         hosts:
           - "auth.${NIP_IO_DOMAIN}"
   config:
-    # Need to override this via config or extraEnv
     configFile: |-
       email_domains = [ "*" ]
       upstreams = [ "file:///dev/null" ]
@@ -329,9 +328,18 @@ oauth2-proxy:
       redirect_url = "https://auth.${NIP_IO_DOMAIN}/oauth2/callback"
       insecure_oidc_allow_unverified_email = true
       skip_provider_button = true
-      cookie_secure = false
+      
+      # Short-lived cookies (1 hour, no refresh) - prevents long auto-login
+      cookie_secure = true
+      cookie_expire = "1h"
       cookie_domains = [ ".${NIP_IO_DOMAIN}" ]
       whitelist_domains = [ ".${NIP_IO_DOMAIN}" ]
+      
+      # Pass roles to backend for RBAC
+      set_xauthrequest = true
+      pass_access_token = true
+      pass_authorization_header = true
+      oidc_groups_claim = "roles"
 
   extraEnv:
     - name: OAUTH2_PROXY_OIDC_ISSUER_URL
@@ -603,15 +611,61 @@ deploy_keycloak() {
     log_info "Access Keycloak at: https://keycloak.$NIP_IO_DOMAIN"
     log_info "Admin user: admin"
 
-    log_step "Force-updating Keycloak Client Config..."
+    # Force reimport the realm by deleting the realm and the CR
+    # KeycloakRealmImport doesn't overwrite existing users, so we must delete the realm first
+    log_step "Reimporting IoT realm (clean import)..."
     
-    if [ -f "$PROJECT_ROOT/scripts/fix-keycloak-config.sh" ]; then
-        "$PROJECT_ROOT/scripts/fix-keycloak-config.sh" "$NIP_IO_DOMAIN" "$ADMIN_PASSWORD" || {
-            log_warn "Failed to auto-configure Keycloak client. You may need to do it manually."
-        }
+    # Wait for Keycloak pod to be ready
+    log_info "Waiting for Keycloak pod to be ready..."
+    kubectl wait --for=condition=Ready pod/keycloak-0 -n keycloak --timeout=60s || true
+    sleep 5
+    
+    # Get admin token to delete the realm via API
+    log_info "Getting admin token..."
+    KEYCLOAK_URL="https://keycloak.$NIP_IO_DOMAIN"
+    TOKEN_RESPONSE=$(curl -sk --connect-timeout 10 --max-time 30 -X POST "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
+        -d "client_id=admin-cli" \
+        -d "username=admin" \
+        -d "password=$ADMIN_PASSWORD" \
+        -d "grant_type=password" 2>/dev/null || echo '{}')
+    TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')
+    
+    if [ -n "$TOKEN" ]; then
+        log_info "Deleting existing IoT realm..."
+        curl -sk --connect-timeout 10 -X DELETE "$KEYCLOAK_URL/admin/realms/iot" \
+            -H "Authorization: Bearer $TOKEN" || true
+        sleep 2
     else
-        log_warn "Fix script not found at $PROJECT_ROOT/scripts/fix-keycloak-config.sh"
+        log_warn "Could not get admin token. Realm may not be deleted cleanly."
     fi
+    
+    # Delete the KeycloakRealmImport CR
+    if kubectl get keycloakrealmimport iot-realm -n keycloak &>/dev/null; then
+        log_info "Deleting KeycloakRealmImport CR..."
+        kubectl delete keycloakrealmimport iot-realm -n keycloak --wait=true || true
+        sleep 3
+    fi
+    
+    # Redeploy to recreate the KeycloakRealmImport (will create fresh realm with users)
+    log_info "Recreating realm from Helm..."
+    helm upgrade --install keycloak "$CHART_DIR" \
+        --namespace keycloak \
+        --set keycloak.enabled=true \
+        --set keycloak.adminPassword=$ADMIN_PASSWORD \
+        --set keycloak.ingress.hostname=keycloak.$NIP_IO_DOMAIN \
+        --set domain=$NIP_IO_DOMAIN \
+        --wait \
+        --timeout 5m
+    
+    # Wait for realm import to complete
+    log_info "Waiting for realm import to complete..."
+    sleep 10
+    kubectl wait --for=jsonpath='{.status.conditions[0].status}'=True keycloakrealmimport/iot-realm -n keycloak --timeout=120s || {
+        log_warn "Realm import may not have completed. Check: kubectl get keycloakrealmimport iot-realm -n keycloak -o yaml"
+    }
+    
+    log_success "IoT realm configured successfully"
+    log_info "Users: admin/admin (full access), test/test (telemetry only)"
 }
 
 deploy_test_page() {

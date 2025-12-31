@@ -17,17 +17,23 @@ spec:
     resetPasswordAllowed: false
     editUsernameAllowed: false
     
+    # Session timeouts (in seconds)
+    ssoSessionIdleTimeout: 1800        # 30 minutes idle
+    ssoSessionMaxLifespan: 28800       # 8 hours max
+    accessTokenLifespan: 300           # 5 minutes
+    accessTokenLifespanForImplicitFlow: 300
+    
     roles:
       realm:
         - name: admin
-          description: Administrator with full access
-        - name: user
-          description: Standard user with read/execute access
+          description: Full access to all IoT Load Tester endpoints
+        - name: test-telemetry
+          description: Access to telemetry tests and viewing test results
     
     clients:
       - clientId: iot-load-tester
         name: IoT Load Tester
-        description: Load testing application
+        description: Load testing application for IoT protocols
         enabled: true
         publicClient: false
         secret: "test-secret"
@@ -35,7 +41,6 @@ spec:
         implicitFlowEnabled: false
         directAccessGrantsEnabled: true
         serviceAccountsEnabled: false
-        # For development/simplicity, allowing all redirects. In prod, restrict this.
         rootUrl: ""
         redirectUris:
           - "https://loadtest.{{ .Values.domain }}/*"
@@ -50,6 +55,30 @@ spec:
           - roles
           - profile
           - email
+        # Ensure roles are included in tokens
+        protocolMappers:
+          - name: realm-roles
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-realm-role-mapper
+            consentRequired: false
+            config:
+              multivalued: "true"
+              userinfo.token.claim: "true"
+              id.token.claim: "true"
+              access.token.claim: "true"
+              claim.name: "roles"
+              jsonType.label: "String"
+          - name: groups
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-realm-role-mapper
+            consentRequired: false
+            config:
+              multivalued: "true"
+              userinfo.token.claim: "true"
+              id.token.claim: "true"
+              access.token.claim: "true"
+              claim.name: "groups"
+              jsonType.label: "String"
     
     users:
       - username: admin
@@ -63,16 +92,15 @@ spec:
             temporary: false
         realmRoles:
           - admin
-          - user
       
-      - username: testuser
+      - username: test
         enabled: true
         firstName: Test
         lastName: User
-        email: testuser@example.com
+        email: test@example.com
         credentials:
           - type: password
             value: test
             temporary: false
         realmRoles:
-          - user
+          - test-telemetry
