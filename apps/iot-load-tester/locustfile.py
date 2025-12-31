@@ -123,12 +123,38 @@ class IoTDeviceUser(User):
     def run_test(self):
         """Main test task - runs based on test type."""
         if not self.connected or not self.client:
+            # Try to reconnect if client exists but disconnected
+            if self.client and not self.connected:
+                try:
+                    self.client.connect()
+                    self.connected = True
+                    # Log successful reconnection
+                    events.request.fire(
+                        request_type=self.protocol.upper(),
+                        name="reconnect_success",
+                        response_time=0,
+                        response_length=0,
+                        exception=None
+                    )
+                except Exception as e:
+                    # Failed to reconnect, back off slightly
+                    time.sleep(1.0)
+                    events.request.fire(
+                        request_type=self.protocol.upper(),
+                        name="reconnect_fail",
+                        response_time=0,
+                        response_length=0,
+                        exception=e
+                    )
             return
         
         # Rate limiting
         now = time.time()
-        if now - self.last_publish < self.publish_interval:
-            time.sleep(self.publish_interval - (now - self.last_publish))
+        time_since_last = now - self.last_publish
+        if time_since_last < self.publish_interval:
+            sleep_time = self.publish_interval - time_since_last
+            if sleep_time > 0:
+                time.sleep(sleep_time)
         
         try:
             if self.test_type == "telemetry":
