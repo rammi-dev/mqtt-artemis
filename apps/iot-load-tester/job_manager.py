@@ -203,9 +203,13 @@ class JobManager:
         if job.status == JobStatus.RUNNING and job.process:
             try:
                 job.process.send_signal(signal.SIGTERM)
-                job.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                job.process.kill()
+                try:
+                    await asyncio.wait_for(job.process.wait(), timeout=10)
+                except asyncio.TimeoutError:
+                    job.process.kill()
+                    await job.process.wait()
+            except ProcessLookupError:
+                pass
             
             job.status = JobStatus.STOPPED
             job.ended_at = datetime.utcnow()
@@ -213,6 +217,16 @@ class JobManager:
             return True
         
         return False
+
+    async def stop_all_jobs(self) -> int:
+        """Stop all running jobs."""
+        count = 0
+        async with self._lock:
+            for job_id, job in self._jobs.items():
+                if job.status == JobStatus.RUNNING:
+                    if await self.stop_job(job_id):
+                        count += 1
+        return count
     
     async def list_jobs(self) -> list:
         """List all jobs."""

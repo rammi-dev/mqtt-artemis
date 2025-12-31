@@ -17,6 +17,10 @@ from security import require_roles, require_admin
 async def lifespan(app: FastAPI):
     """App lifespan handler."""
     yield
+    # Stop all running jobs on shutdown
+    count = await job_manager.stop_all_jobs()
+    if count > 0:
+        print(f"Stopped {count} running jobs on shutdown")
     await job_manager.cleanup_expired()
 
 
