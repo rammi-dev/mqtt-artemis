@@ -98,68 +98,148 @@ curl -X POST http://localhost:8090/tests \
 
 ## Test Type Examples
 
+### Message Statistics (Standard Setup)
+
+| Test Type | Devices | Runtime | Rate/Device | **Total Events** | **Events/Device** |
+|-----------|---------|---------|-------------|------------------|-------------------|
+| Telemetry | 100 | 60s | 1 msg/s | **6,000** | **60** |
+| Burst | 1,000 | 120s | 1 msg/s (10x for 30s) | **150,000** | **150** |
+| Churn | 500 | 120s | ~1 conn/10s | **6,000 connections** | **12 reconnects** |
+| Retained | 100 | 60s | 1 msg/s | **6,000** | **60** |
+| Command | 50 | 60s | 1 cmd/s | **6,000** (3k commands + 3k responses) | **120** |
+| Offline | 100 | 120s | 1 msg/s | **12,000** | **120** |
+| LWT | 100 | 60s | 1 disconnect | **100 LWT messages** | **1** |
+
+### Sensor Data Behavior
+
+Telemetry messages include **realistic sensor data** with temporal trends:
+
+**Sensors Included:**
+- `temperature`: 10-30°C baseline (per device) + gradual warming trend (+5°C/hour) + noise (±0.5°C)
+- `humidity`: 35-65% baseline (per device) + 5-minute cycle (±10%) + noise (±2%)
+- `pressure`: 1003-1023 hPa baseline (per device) + small noise (±0.5 hPa)
+
+**Key Features:**
+- **Seed-based**: Each device has consistent baseline values (reproducible)
+- **Gradual changes**: Values trend over time, not random jumps
+- **Realistic patterns**: Temperature warms, humidity cycles, pressure is stable
+
+**Example payload:**
+```json
+{
+  "deviceId": "device-00042-xkcd",
+  "timestamp": 1735654321000,
+  "temperature": 23.45,
+  "humidity": 58.32,
+  "pressure": 1015.67
+}
+```
+
 ### 1. Telemetry (default)
 Devices periodically send sensor data.
+
+**Events per device**: `runtimeSeconds × publishRatePerDevice` (default: 60 × 1 = **60 messages**)
+
+**Available Parameters:**
+- `devices`: 1-100,000 (default: 100)
+- `publishRatePerDevice`: 0.1-100 msg/s (default: 1.0)
+- `messageSizeBytes`: 1-1,048,576 bytes (default: 256)
+- `topicPattern`: string (default: "devices/{deviceId}/telemetry")
+- `qos`: 0-2 (default: 1)
+- `messageExpirySeconds`: 1-86,400 seconds (optional, MQTT 5.0)
+- `runtimeSeconds`: 10-3,600 seconds (default: 60)
+
 ```bash
-curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d '{
-  "protocol": "mqtt",
+curl -X POST https://loadtest.35.206.88.67.nip.io/tests/telemetry \
+  -H "Content-Type: application/json" -d '{
   "brokerUrl": "mqtt://artemis-mqtt-0-svc.edge:1883",
-  "testType": "telemetry",
   "devices": 100,
   "topicPattern": "devices/{deviceId}/telemetry",
   "qos": 1,
   "publishRatePerDevice": 1.0,
   "messageSizeBytes": 256,
+  "messageExpirySeconds": 3600,
   "runtimeSeconds": 60
 }'
 ```
 
 ### 2. Burst Traffic
 Simulates synchronized traffic spikes.
+
+**Events per device**: `(runtimeSeconds - burstDurationSeconds) × 1 + burstDurationSeconds × multiplier`  
+(default: 90 × 1 + 30 × 10 = **390 messages**)
+
+**Available Parameters:**
+- `devices`: 1-100,000 (default: 1,000)
+- `multiplier`: 1-100 (default: 10) - Traffic spike multiplier
+- `burstDurationSeconds`: 1-300 seconds (default: 30)
+- `messageExpirySeconds`: 1-86,400 seconds (optional, MQTT 5.0)
+- `runtimeSeconds`: 10-3,600 seconds (default: 120)
+
 ```bash
-curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d '{
-  "protocol": "mqtt",
+curl -X POST https://loadtest.35.206.88.67.nip.io/tests/burst \
+  -H "Content-Type: application/json" -d '{
   "brokerUrl": "mqtt://artemis-mqtt-0-svc.edge:1883",
-  "testType": "burst",
   "devices": 1000,
-  "burst": {"enabled": true, "multiplier": 10, "durationSeconds": 30},
+  "multiplier": 10,
+  "burstDurationSeconds": 30,
+  "messageExpirySeconds": 120,
   "runtimeSeconds": 120
 }'
 ```
 
 ### 3. Connection Churn
 Simulates unstable devices connecting/disconnecting.
+
+**Events per device**: `runtimeSeconds / 10` (default: 120 / 10 = **12 reconnects**)
+
+**Available Parameters:**
+- `devices`: 1-100,000 (default: 500)
+- `runtimeSeconds`: 10-3,600 seconds (default: 120)
+
 ```bash
-curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d '{
-  "protocol": "mqtt",
+curl -X POST https://loadtest.35.206.88.67.nip.io/tests/churn \
+  -H "Content-Type: application/json" -d '{
   "brokerUrl": "mqtt://artemis-mqtt-0-svc.edge:1883",
-  "testType": "churn",
   "devices": 500,
-  "cleanSession": false,
   "runtimeSeconds": 120
 }'
 ```
 
 ### 4. Retained Messages
 Tests retained message fan-out under load.
+
+**Events per device**: `runtimeSeconds × 1` (default: 60 × 1 = **60 messages**)
+
+**Available Parameters:**
+- `devices`: 1-100,000 (default: 100)
+- `messageExpirySeconds`: 1-86,400 seconds (optional, MQTT 5.0)
+- `runtimeSeconds`: 10-3,600 seconds (default: 60)
+
 ```bash
-curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d '{
-  "protocol": "mqtt",
+curl -X POST https://loadtest.35.206.88.67.nip.io/tests/retained \
+  -H "Content-Type: application/json" -d '{
   "brokerUrl": "mqtt://artemis-mqtt-0-svc.edge:1883",
-  "testType": "retained",
   "devices": 100,
-  "retain": true,
+  "messageExpirySeconds": 300,
   "runtimeSeconds": 60
 }'
 ```
 
 ### 5. Command & Control
 Backend sends commands, devices respond.
+
+**Events per device**: `runtimeSeconds × 2` (1 command + 1 response per second, default: 60 × 2 = **120 messages**)
+
+**Available Parameters:**
+- `devices`: 1-100,000 (default: 50)
+- `qos`: 0-2 (default: 1)
+- `runtimeSeconds`: 10-3,600 seconds (default: 60)
+
 ```bash
-curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d '{
-  "protocol": "mqtt",
+curl -X POST https://loadtest.35.206.88.67.nip.io/tests/command \
+  -H "Content-Type: application/json" -d '{
   "brokerUrl": "mqtt://artemis-mqtt-0-svc.edge:1883",
-  "testType": "command",
   "devices": 50,
   "qos": 1,
   "runtimeSeconds": 60
@@ -168,13 +248,19 @@ curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d 
 
 ### 6. Offline Device Backlog
 Tests persistent sessions and message replay.
+
+**Events per device**: `runtimeSeconds × 1` (default: 120 × 1 = **120 messages**)
+
+**Available Parameters:**
+- `devices`: 1-100,000 (default: 100)
+- `qos`: 0-2 (default: 1)
+- `runtimeSeconds`: 10-3,600 seconds (default: 120)
+
 ```bash
-curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d '{
-  "protocol": "mqtt",
+curl -X POST https://loadtest.35.206.88.67.nip.io/tests/offline \
+  -H "Content-Type: application/json" -d '{
   "brokerUrl": "mqtt://artemis-mqtt-0-svc.edge:1883",
-  "testType": "offline",
   "devices": 100,
-  "cleanSession": false,
   "qos": 1,
   "runtimeSeconds": 120
 }'
@@ -182,20 +268,31 @@ curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d 
 
 ### 7. Last Will & Testament (LWT)
 Simulates unexpected device failures.
+
+**Events per device**: **1 LWT message** per device
+
+**Available Parameters:**
+- `devices`: 1-100,000 (default: 100)
+- `runtimeSeconds`: 10-3,600 seconds (default: 60)
+
 ```bash
-curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d '{
-  "protocol": "mqtt",
+curl -X POST https://loadtest.35.206.88.67.nip.io/tests/lwt \
+  -H "Content-Type: application/json" -d '{
   "brokerUrl": "mqtt://artemis-mqtt-0-svc.edge:1883",
-  "testType": "lwt",
   "devices": 100,
   "runtimeSeconds": 60
 }'
 ```
 
 ### AMQP 1.0 Example
+
+**Available Parameters:**
+- `devices`: 1-100,000 (default: 50)
+- `runtimeSeconds`: 10-3,600 seconds (default: 60)
+
 ```bash
-curl -X POST http://localhost:8090/tests -H "Content-Type: application/json" -d '{
-  "protocol": "amqp",
+curl -X POST https://loadtest.35.206.88.67.nip.io/tests/amqp \
+  -H "Content-Type: application/json" -d '{
   "brokerUrl": "amqp://artemis-amqp-0-svc.edge:5672",
   "devices": 50,
   "runtimeSeconds": 60

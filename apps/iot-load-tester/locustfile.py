@@ -184,14 +184,45 @@ class IoTDeviceUser(User):
             )
     
     def _generate_payload(self) -> bytes:
-        """Generate test payload."""
+        """Generate test payload with realistic sensor trends."""
+        # Use device ID hash as seed for reproducible but varied trends
+        device_seed = hash(self.device_id) % 10000
+        
+        # Time-based trend (changes gradually over execution)
+        elapsed = time.time() - getattr(self, '_start_time', time.time())
+        if not hasattr(self, '_start_time'):
+            self._start_time = time.time()
+        
+        # Seed random for this device
+        random.seed(device_seed + int(elapsed))
+        
+        # Temperature: baseline + slow trend + small noise
+        temp_baseline = 20 + (device_seed % 20) - 10  # 10-30°C baseline per device
+        temp_trend = 5 * (elapsed / 3600)  # +5°C per hour trend
+        temp_noise = random.uniform(-0.5, 0.5)
+        temperature = round(temp_baseline + temp_trend + temp_noise, 2)
+        
+        # Humidity: baseline + cyclic pattern + noise
+        humidity_baseline = 50 + (device_seed % 30) - 15  # 35-65% baseline
+        humidity_cycle = 10 * (1 + (elapsed % 300) / 300)  # 5-min cycle
+        humidity_noise = random.uniform(-2, 2)
+        humidity = round(max(0, min(100, humidity_baseline + humidity_cycle + humidity_noise)), 2)
+        
+        # Pressure: stable with small variations
+        pressure_baseline = 1013 + (device_seed % 20) - 10  # 1003-1023 hPa
+        pressure_noise = random.uniform(-0.5, 0.5)
+        pressure = round(pressure_baseline + pressure_noise, 2)
+        
+        # Reset random to system state
+        random.seed()
+        
         data = {
             "deviceId": self.device_id,
             "timestamp": int(time.time() * 1000),
-            "temperature": round(20 + random.uniform(-5, 15), 2),
-            "humidity": round(random.uniform(30, 80), 2),
-            "pressure": round(random.uniform(990, 1020), 2),
-            "padding": "x" * max(0, self.message_size - 150)
+            "temperature": temperature,
+            "humidity": humidity,
+            "pressure": pressure,
+            "padding": "x" * max(0, self.message_size - 200)
         }
         return json.dumps(data).encode()
     
