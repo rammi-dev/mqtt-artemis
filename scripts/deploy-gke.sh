@@ -511,7 +511,6 @@ deploy_nifi() {
     # Create namespace
     kubectl create namespace nifi 2>/dev/null || true
 
-    # Create temp values file with proper multiline string
     cat <<EOF > /tmp/nifi-values.yaml
 nifi-cluster:
   cluster:
@@ -519,7 +518,7 @@ nifi-cluster:
     zkAddress: nifi-zookeeper:2181
     nifiProperties:
       overrideConfigs: |
-        nifi.web.proxy.context.path=/
+        nifi.web.proxy.context.path=
         nifi.web.proxy.host=nifi.${NIP_IO_DOMAIN}
         nifi.security.user.oidc.discovery.url=https://keycloak.${NIP_IO_DOMAIN}/realms/iot/.well-known/openid-configuration
         nifi.security.user.oidc.client.id=nifi
@@ -528,7 +527,20 @@ nifi-cluster:
         nifi.security.user.oidc.fallback.claims.identifying.user=sub
         nifi.sensitive.props.key=c547deab185eac0e4a8139528a70c8101f18ac9a83c15b12466d979cc4b1a59c
   ingress:
-    enabled: false
+    hosts:
+      - host: nifi.${NIP_IO_DOMAIN}
+        paths:
+          - path: /(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: nifi-cluster-ip
+                port:
+                  number: 8080
+    tls:
+      - secretName: nifi-tls
+        hosts:
+          - nifi.${NIP_IO_DOMAIN}
 zookeeper:
   enabled: true
   auth:

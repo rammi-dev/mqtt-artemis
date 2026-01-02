@@ -32,7 +32,9 @@ helm upgrade --install nifi charts/infrastructure/nifi \
 
 | URL | Description |
 |-----|-------------|
-| `https://nifi.<domain>/nifi` | NiFi UI |
+| `https://nifi.<domain>/nifi/` | NiFi UI (trailing slash required) |
+
+**Note**: The trailing slash is required. Use `/nifi/` not `/nifi`
 
 ## Authentication
 
