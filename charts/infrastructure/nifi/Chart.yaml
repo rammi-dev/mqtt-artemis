@@ -1,0 +1,19 @@
+apiVersion: v2
+name: nifi
+description: Apache NiFi deployment via NiFiKop operator with Keycloak OIDC
+type: application
+version: 1.0.0
+appVersion: "1.28.0"
+
+dependencies:
+  # NiFiKop operator (installs CRDs)
+  - name: nifikop
+    version: "1.14.1"
+    repository: "https://radar-base.github.io/radar-helm-charts"
+    condition: nifikop.enabled
+  
+  # NiFi Cluster (the actual NiFi deployment)
+  - name: nifi-cluster
+    version: "1.14.1"
+    repository: "https://radar-base.github.io/radar-helm-charts"
+    condition: nifi-cluster.enabled

@@ -1,0 +1,186 @@
+# Apache NiFi Helm Chart Values
+# Uses NiFiKop operator with Keycloak OIDC auth and Artemis connectivity
+
+# Domain configuration (set via --set domain=<ip>.nip.io)
+domain: ""
+
+# ============================================================================
+# NiFiKop Operator
+# ============================================================================
+nifikop:
+  enabled: true
+  namespaces: ["nifi"]
+  # Operator-specific config, mostly using defaults
+
+# ============================================================================
+# NiFi Cluster Configuration
+# ============================================================================
+nifi-cluster:
+  enabled: true
+  
+  # ServiceAccount required by template
+  serviceAccount:
+    name: ""
+    annotations: {}
+    labels: {}
+  
+  cluster:
+    nameOverride: "nifi"
+    clientType: basic
+    zkAddress: "nifi-zookeeper:2181"
+    zkPath: "/nifi"
+    
+    # Single node for development
+    oneNifiNodePerNode: false
+    
+    # Single user configuration (fallback if OIDC fails)
+    singleUserConfiguration:
+      enabled: false
+    
+    # Managed admin users (OIDC users will be added here)
+    managedAdminUsers:
+      - identity: "admin"
+        name: "admin"
+    
+    managedReaderUsers:
+      - identity: "test"
+        name: "test"
+    
+    image:
+      repository: "apache/nifi"
+      tag: ""  # Use chart appVersion
+    
+    # NiFi Properties overrides for OIDC
+    nifiProperties:
+      overrideConfigs: |
+        # Web proxy path for ingress
+        nifi.web.proxy.context.path=/
+        nifi.web.proxy.host=nifi.${DOMAIN}
+        
+        # OIDC Authentication with Keycloak
+        nifi.security.user.oidc.discovery.url=https://keycloak.${DOMAIN}/realms/iot/.well-known/openid-configuration
+        nifi.security.user.oidc.client.id=nifi
+        nifi.security.user.oidc.client.secret=nifi-secret
+        nifi.security.user.oidc.claim.identifying.user=preferred_username
+        nifi.security.user.oidc.additional.scopes=profile,email,roles
+        
+        # Admin identity (must match OIDC claim)
+        nifi.security.user.oidc.fallback.claims.identifying.user=sub
+        
+        # Sensitive properties key for cluster
+        nifi.sensitive.props.key=c547deab185eac0e4a8139528a70c8101f18ac9a83c15b12466d979cc4b1a59c
+    
+    pod:
+      annotations: {}
+      labels: {}
+    
+    service:
+      annotations: {}
+      labels: {}
+      headlessEnabled: true
+    
+    # Resource limits
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "500m"
+      limits:
+        memory: "4Gi"
+        cpu: "2000m"
+  
+  # Node configuration
+  nodes:
+    - id: 0
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "500m"
+        limits:
+          memory: "4Gi"
+          cpu: "2000m"
+      storageConfigs:
+        - mountPath: /opt/nifi/data
+          name: data
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 10Gi
+        - mountPath: /opt/nifi/flowfile_repository
+          name: flowfile-repository
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 10Gi
+        - mountPath: /opt/nifi/content_repository
+          name: content-repository
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 10Gi
+        - mountPath: /opt/nifi/provenance_repository
+          name: provenance-repository
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 10Gi
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-staging
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+      nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    hosts: []
+      # Set dynamically via --set
+
+# ============================================================================
+# ZooKeeper Configuration (StatefulSet deployment)
+# ============================================================================
+# NOTE: This is a simplified deployment for development/testing.
+# For production, consider using a ZooKeeper operator (Stackable, Pravega, etc.)
+zookeeper:
+  enabled: true
+  replicas: 1  # Use 3+ for production HA
+  image:
+    repository: zookeeper
+    tag: "3.9.2"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ""  # Use default storage class
+
+# ============================================================================
+# Artemis Connection Details (for documentation)
+# ============================================================================
+artemis:
+  mqtt:
+    host: "artemis-mqtt-0-svc.edge.svc.cluster.local"
+    port: 1883
+    topic: "devices/+/telemetry"
+  amqp:
+    host: "artemis-amqp-0-svc.edge.svc.cluster.local"
+    port: 5672
+    address: "devices.telemetry"
+  credentialsSecret: "artemis-credentials-secret"
+  credentialsNamespace: "edge"

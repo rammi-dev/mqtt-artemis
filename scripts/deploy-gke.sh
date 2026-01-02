@@ -477,7 +477,83 @@ deploy_clickhouse() {
 }
 
 deploy_nifi() {
-    deploy_component "Apache NiFi" "nifikop.enabled,zookeeper.enabled"
+    log_step "Deploying Apache NiFi via NiFiKop operator..."
+
+    # Cleanup previous deployment
+    log_info "Cleaning up previous NiFi deployment..."
+    kubectl delete namespace nifi --timeout=60s 2>/dev/null || true
+    kubectl wait --for=delete namespace/nifi --timeout=60s 2>/dev/null || true
+
+
+    check_required_tools helm kubectl
+    check_kubectl_context
+
+    local CHART_DIR="$PROJECT_ROOT/charts/infrastructure/nifi"
+    
+    # Get nip.io domain
+    NIP_IO_DOMAIN=$(get_terraform_output "nip_io_domain" 2>/dev/null || echo "")
+    if [ -z "$NIP_IO_DOMAIN" ]; then
+        log_error "Could not get nip_io_domain from terraform. Run './scripts/deploy-gke.sh cluster' first."
+        exit 1
+    fi
+
+    # Add radar-base Helm repository
+    log_info "Adding radar-base Helm repository..."
+    helm repo add radar-base https://radar-base.github.io/radar-helm-charts 2>/dev/null || true
+    helm repo update
+
+    # Update Helm dependencies
+    log_info "Updating Helm dependencies for nifi..."
+    pushd "$CHART_DIR" > /dev/null
+    helm dependency update
+    popd > /dev/null
+
+    # Create namespace
+    kubectl create namespace nifi 2>/dev/null || true
+
+    # Create temp values file with proper multiline string
+    cat <<EOF > /tmp/nifi-values.yaml
+nifi-cluster:
+  cluster:
+    manager: zookeeper
+    zkAddress: nifi-zookeeper:2181
+    nifiProperties:
+      overrideConfigs: |
+        nifi.web.proxy.context.path=/
+        nifi.web.proxy.host=nifi.${NIP_IO_DOMAIN}
+        nifi.security.user.oidc.discovery.url=https://keycloak.${NIP_IO_DOMAIN}/realms/iot/.well-known/openid-configuration
+        nifi.security.user.oidc.client.id=nifi
+        nifi.security.user.oidc.client.secret=nifi-secret
+        nifi.security.user.oidc.claim.identifying.user=preferred_username
+        nifi.security.user.oidc.fallback.claims.identifying.user=sub
+        nifi.sensitive.props.key=c547deab185eac0e4a8139528a70c8101f18ac9a83c15b12466d979cc4b1a59c
+  ingress:
+    enabled: false
+zookeeper:
+  enabled: true
+  auth:
+    enabled: false
+  allowAnonymousLogin: true
+  persistence:
+    enabled: false
+EOF
+
+    # Deploy NiFi with OIDC configuration
+    log_info "Deploying NiFi with Keycloak OIDC..."
+    helm upgrade --install nifi "$CHART_DIR" \
+        --namespace nifi \
+        --set domain="$NIP_IO_DOMAIN" \
+        -f /tmp/nifi-values.yaml \
+        --wait \
+        --timeout 15m
+    
+    log_success "Apache NiFi deployed successfully"
+    log_info "Access NiFi at: https://nifi.${NIP_IO_DOMAIN}/nifi"
+    log_info "Login with Keycloak: admin/admin (full access) or test/test (operator)"
+    log_info ""
+    log_info "Artemis connectivity:"
+    log_info "  MQTT: tcp://artemis-mqtt-0-svc.edge.svc.cluster.local:1883"
+    log_info "  Topic: devices/+/telemetry"
 }
 
 deploy_redis() {

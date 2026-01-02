@@ -1,0 +1,24 @@
+{{- if .Values.zookeeper.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nifi-zookeeper
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: nifi-zookeeper
+spec:
+  clusterIP: None
+  ports:
+    - port: 2181
+      name: client
+      targetPort: 2181
+    - port: 2888
+      name: server
+      targetPort: 2888
+    - port: 3888
+      name: leader-election
+      targetPort: 3888
+  selector:
+    app: nifi-zookeeper
+{{- end }}

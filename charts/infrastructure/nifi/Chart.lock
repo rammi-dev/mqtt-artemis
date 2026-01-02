@@ -1,0 +1,9 @@
+dependencies:
+- name: nifikop
+  repository: https://radar-base.github.io/radar-helm-charts
+  version: 1.14.1
+- name: nifi-cluster
+  repository: https://radar-base.github.io/radar-helm-charts
+  version: 1.14.1
+digest: sha256:d387fb5b34762f797f99155eb47052e7aa9dbdb6b1dbe22ee5f79be44c95e9c4
+generated: "2026-01-02T08:52:25.033268929+01:00"

@@ -26,9 +26,11 @@ spec:
     roles:
       realm:
         - name: admin
-          description: Full access to all IoT Load Tester endpoints
+          description: Full access to all applications
         - name: test-telemetry
           description: Access to telemetry tests and viewing test results
+        - name: nifi-operator
+          description: Operator access to NiFi (view and operate flows)
     
     clients:
       - clientId: iot-load-tester
@@ -79,6 +81,42 @@ spec:
               access.token.claim: "true"
               claim.name: "groups"
               jsonType.label: "String"
+      
+      # NiFi OIDC Client
+      - clientId: nifi
+        name: Apache NiFi
+        description: Apache NiFi data flow management
+        enabled: true
+        publicClient: false
+        secret: "nifi-secret"
+        standardFlowEnabled: true
+        implicitFlowEnabled: false
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: false
+        rootUrl: ""
+        redirectUris:
+          - "https://nifi.{{ .Values.domain }}/*"
+        webOrigins:
+          - "*"
+        fullScopeAllowed: true
+        defaultClientScopes:
+          - web-origins
+          - acr
+          - roles
+          - profile
+          - email
+        protocolMappers:
+          - name: realm-roles
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-realm-role-mapper
+            consentRequired: false
+            config:
+              multivalued: "true"
+              userinfo.token.claim: "true"
+              id.token.claim: "true"
+              access.token.claim: "true"
+              claim.name: "roles"
+              jsonType.label: "String"
     
     users:
       - username: admin
@@ -92,6 +130,7 @@ spec:
             temporary: false
         realmRoles:
           - admin
+          - nifi-operator
       
       - username: test
         enabled: true
@@ -104,3 +143,5 @@ spec:
             temporary: false
         realmRoles:
           - test-telemetry
+          - nifi-operator
+

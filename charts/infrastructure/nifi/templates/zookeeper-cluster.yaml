@@ -1,0 +1,78 @@
+{{- if .Values.zookeeper.enabled }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nifi-zookeeper
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: nifi-zookeeper
+spec:
+  serviceName: nifi-zookeeper
+  replicas: {{ .Values.zookeeper.replicas }}
+  selector:
+    matchLabels:
+      app: nifi-zookeeper
+  template:
+    metadata:
+      labels:
+        app: nifi-zookeeper
+    spec:
+      {{- if not .Values.zookeeper.persistence.enabled }}
+      volumes:
+      - name: data
+        emptyDir: {}
+      - name: datalog
+        emptyDir: {}
+      {{- end }}
+      containers:
+      - name: zookeeper
+        image: "{{ .Values.zookeeper.image.repository }}:{{ .Values.zookeeper.image.tag }}"
+        imagePullPolicy: {{ .Values.zookeeper.image.pullPolicy }}
+        ports:
+        - containerPort: 2181
+          name: client
+        - containerPort: 2888
+          name: server
+        - containerPort: 3888
+          name: leader-election
+        env:
+        # For standalone mode (single replica)
+        - name: ZOO_STANDALONE_ENABLED
+          value: "true"
+        - name: ZOO_ADMINSERVER_ENABLED
+          value: "false"
+        # Disable 4lw commands requirement
+        - name: ZOO_4LW_COMMANDS_WHITELIST
+          value: "srvr,mntr,conf,ruok"
+        resources:
+          {{- toYaml .Values.zookeeper.resources | nindent 10 }}
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: datalog
+          mountPath: /datalog
+  {{- if .Values.zookeeper.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      {{- if .Values.zookeeper.persistence.storageClass }}
+      storageClassName: {{ .Values.zookeeper.persistence.storageClass }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.zookeeper.persistence.size }}
+  - metadata:
+      name: datalog
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      {{- if .Values.zookeeper.persistence.storageClass }}
+      storageClassName: {{ .Values.zookeeper.persistence.storageClass }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.zookeeper.persistence.size }}
+  {{- end }}
+{{- end }}
