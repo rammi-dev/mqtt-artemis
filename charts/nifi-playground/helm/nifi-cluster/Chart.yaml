@@ -1,0 +1,8 @@
+apiVersion: v2
+name: nifi-cluster
+description: A Helm chart for NiFi Cluster using NiFiKop
+type: application
+version: 0.1.0
+appVersion: "1.23.2"
+appVersion: "1.23.2"
+

@@ -1,0 +1,21 @@
+nifi:
+  image:
+    repository: apache/nifi
+    tag: 1.23.2
+  replicas: 1
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "1000m"
+      memory: "4Gi"
+  storage:
+    size: 10Gi
+    className: standard
+
+# External ZooKeeper Configuration
+zookeeper:
+  url: "zookeeper-zookeeper.zookeeper.svc.cluster.local:2181"
+  path: "/"
+

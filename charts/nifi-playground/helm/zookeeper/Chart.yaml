@@ -1,0 +1,10 @@
+apiVersion: v2
+name: zookeeper
+description: A Helm chart for Shared ZooKeeper
+type: application
+version: 0.1.0
+appVersion: "3.8.0"
+dependencies:
+  - name: zookeeper
+    version: 0.5.1
+    repository: "oci://registry-1.docker.io/cloudpirates"

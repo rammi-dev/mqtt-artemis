@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nifi-registry.fullname" . }}-config
+  labels:
+    {{- include "nifi-registry.labels" . | nindent 4 }}
+data:
+  nifi-registry.properties: |
+    # Web Properties
+    nifi.registry.web.war.directory=./lib
+    nifi.registry.web.http.host=
+    nifi.registry.web.http.port=18080
+    nifi.registry.web.https.host=
+    nifi.registry.web.https.port=
+    nifi.registry.web.jetty.working.directory=./work/jetty
+    nifi.registry.web.jetty.threads=200
+
+    # Security Properties
+    nifi.registry.security.keystore=
+    nifi.registry.security.keystoreType=
+    nifi.registry.security.keystorePasswd=
+    nifi.registry.security.keyPasswd=
+    nifi.registry.security.truststore=
+    nifi.registry.security.truststoreType=
+    nifi.registry.security.truststorePasswd=
+    nifi.registry.security.needClientAuth=
+    nifi.registry.security.authorizers.configuration.file=./conf/authorizers.xml
+    nifi.registry.security.authorizer=managed-authorizer
+    nifi.registry.security.identity.provider=
+
+    # Database Properties
+    {{- if .Values.postgres.enabled }}
+    nifi.registry.db.url=jdbc:postgresql://postgres.postgres.svc.cluster.local:5432/nifi_registry
+    nifi.registry.db.driver.class=org.postgresql.Driver
+    nifi.registry.db.driver.directory=/opt/nifi-registry/nifi-registry-current/lib/custom
+    nifi.registry.db.username=DB_USER_PLACEHOLDER
+    nifi.registry.db.password=DB_PASS_PLACEHOLDER
+    nifi.registry.db.maxConnections=5
+    nifi.registry.db.sql.debug=false
+    {{- else }}
+    nifi.registry.db.url=jdbc:h2:./database/nifi-registry-primary;AUTO_SERVER=TRUE;LOCK_TIMEOUT=10000;
+    nifi.registry.db.driver.class=org.h2.Driver
+    nifi.registry.db.driver.directory=
+    nifi.registry.db.username=nifi
+    nifi.registry.db.password=nifi
+    {{- end }}
+
+    # Providers Properties
+    nifi.registry.providers.configuration.file=./conf/providers.xml
+
+    # Service properties
+    nifi.registry.sensitive.props.key=
+    nifi.registry.sensitive.props.algorithm=PBEWITHMD5AND256BITAES-CBC-OPENSSL

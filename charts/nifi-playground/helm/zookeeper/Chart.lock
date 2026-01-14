@@ -1,0 +1,6 @@
+dependencies:
+- name: zookeeper
+  repository: oci://registry-1.docker.io/cloudpirates
+  version: 0.5.1
+digest: sha256:6c9548ad83fd15762a70dd00855714d63f819a9ee9bffbad5d600a7f6baa1917
+generated: "2026-01-14T21:14:53.33165798+01:00"

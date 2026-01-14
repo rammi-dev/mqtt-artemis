@@ -1,0 +1,24 @@
+image:
+  repository: nifi-registry-custom
+  tag: 0.1.0
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 18080
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+# Configuration for connecting to an external Postgres database
+# This does NOT deploy Postgres. It only configures the JDBC connection.
+postgres:
+  enabled: true
+
+# URL to download the Postgres JDBC driver
+driverUrl: "https://jdbc.postgresql.org/download/postgresql-42.6.0.jar"

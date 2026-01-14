@@ -1,0 +1,45 @@
+apiVersion: nifi.konpyutaika.com/v1
+kind: NifiCluster
+metadata:
+  name: {{ include "nifi-cluster.fullname" . }}
+  labels:
+    {{- include "nifi-cluster.labels" . | nindent 4 }}
+spec:
+  service:
+    headlessEnabled: true
+  zkAddress: {{ .Values.zookeeper.url }}
+  zkPath: {{ .Values.zookeeper.path }}{{ .Release.Name }}
+  clusterImage:
+    repository: {{ .Values.nifi.image.repository }}
+    tag: {{ .Values.nifi.image.tag }}
+  oneNifiNodePerNode: false
+  nodes:
+    - id: 0
+      nodeConfigGroup: "default"
+  nodeConfigGroups:
+    default:
+      isNode: true
+      storageConfigs:
+        - mountPath: "/opt/nifi/nifi-current/logs"
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: {{ .Values.nifi.storage.className }}
+            resources:
+              requests:
+                storage: {{ .Values.nifi.storage.size }}
+        - mountPath: "/opt/nifi/data"
+          pvcSpec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: {{ .Values.nifi.storage.className }}
+            resources:
+              requests:
+                storage: {{ .Values.nifi.storage.size }}
+      resourcesRequirements:
+        requests:
+          cpu: {{ .Values.nifi.resources.requests.cpu }}
+          memory: {{ .Values.nifi.resources.requests.memory }}
+        limits:
+          cpu: {{ .Values.nifi.resources.limits.cpu }}
+          memory: {{ .Values.nifi.resources.limits.memory }}

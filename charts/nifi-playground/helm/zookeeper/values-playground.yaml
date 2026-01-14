@@ -1,0 +1,22 @@
+zookeeper:
+  replicaCount: 1
+  persistence:
+    enabled: true
+    storageClass: storage-zookeeper
+    size: 1Gi
+  containerSecurityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+    allowPrivilegeEscalation: true
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: []
+      add: ["CHOWN", "DAC_OVERRIDE"]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi

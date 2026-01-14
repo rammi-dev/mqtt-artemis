@@ -1,0 +1,10 @@
+apiVersion: v2
+name: nifi-operator
+description: A Helm chart for NiFi Operator (NiFiKop)
+type: application
+version: 0.1.0
+appVersion: "1.16.0"
+dependencies:
+  - name: nifikop
+    version: 1.16.0
+    repository: "oci://ghcr.io/konpyutaika/helm-charts"

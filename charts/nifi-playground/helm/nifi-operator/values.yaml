@@ -1,0 +1,14 @@
+nifikop:
+  image:
+    tag: v1.16.0-release
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  namespaces:
+    - nifi-operator
+    - nifi-initcluster
+    - nifi-secondary

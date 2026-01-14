@@ -1,0 +1,16 @@
+nifi:
+  certManager:
+    enabled: false
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "1000m"
+      memory: "4Gi"
+  storage:
+    size: 5Gi
+    className: storage-zookeeper
+
+zookeeper:
+  url: "zookeeper.zk.svc.cluster.local:2181"

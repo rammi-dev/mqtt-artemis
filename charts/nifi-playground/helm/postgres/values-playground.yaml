@@ -1,0 +1,28 @@
+postgres:
+  initContainers:
+    - name: volume-permissions
+      image: busybox:latest
+      # We need to chown the mount point so the postgres user (999) can write to it.
+      command: ['sh', '-c', 'chown -R 999:999 /var/lib/postgresql']
+      volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql
+      securityContext:
+        runAsUser: 0
+  auth:
+    existingSecret: postgres-auth
+    username: nifi_registry
+    database: nifi_registry
+    secretKeys:
+      adminPasswordKey: postgres-password
+  persistence:
+    enabled: true
+    storageClass: storage-zookeeper
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi

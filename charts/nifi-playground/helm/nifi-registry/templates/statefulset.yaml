@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "nifi-registry.fullname" . }}
+  labels:
+    {{- include "nifi-registry.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "nifi-registry.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nifi-registry.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nifi-registry.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 18080
+              protocol: TCP
+          volumeMounts:
+            - name: flow-storage
+              mountPath: /opt/nifi-registry/nifi-registry-current/flow_storage
+            - name: config
+              mountPath: /opt/nifi-registry/nifi-registry-current/conf/templates/nifi-registry.properties
+              subPath: nifi-registry.properties
+          env:
+            - name: NIFI_REGISTRY_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-registry-db-auth
+                  key: NIFI_REGISTRY_DB_USERNAME
+            - name: NIFI_REGISTRY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nifi-registry-db-auth
+                  key: NIFI_REGISTRY_DB_PASSWORD
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "nifi-registry.fullname" . }}-config
+  volumeClaimTemplates:
+    - metadata:
+        name: flow-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
+
